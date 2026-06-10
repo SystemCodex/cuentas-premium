@@ -8,7 +8,7 @@
     "dev:api": "tsx watch server/index.ts",
     "dev:web": "vite --host 0.0.0.0",
     "postinstall": "prisma generate",
-    "build": "prisma generate && vite build",
+    "build": "prisma generate && prisma migrate deploy && tsx prisma/seed.ts && tsx scripts/bootstrap-production.ts && vite build",
     "build:server": "tsc -p tsconfig.server.json",
     "build:all": "prisma generate && vite build && tsc -p tsconfig.server.json",
     "start": "node server.js",
@@ -20,6 +20,7 @@
     "db:production": "npm run db:deploy && npm run db:generate && npm run db:seed",
     "create-admin": "tsx scripts/create-admin.ts",
     "create-provider": "tsx scripts/create-provider.ts",
+    "bootstrap:production": "tsx scripts/bootstrap-production.ts",
     "clear:operational": "tsx scripts/clear-operational-data.ts",
     "typecheck": "tsc --noEmit"
   },

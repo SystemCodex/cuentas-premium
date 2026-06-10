@@ -1,0 +1,157 @@
+import path from 'node:path';
+import QRCode from 'qrcode';
+import type { WhatsAppBridgeConnection, WhatsAppInboundHandler } from './types.js';
+
+let client: any = null;
+let connection: WhatsAppBridgeConnection = 'disconnected';
+let qrCodeDataUrl: string | null = null;
+let lastError: string | null = null;
+let initStarted = false;
+let inboundHandler: WhatsAppInboundHandler | null = null;
+let connectedNumber: string | null = null;
+
+function isEnabled() {
+  return process.env.WHATSAPP_BRIDGE_ENABLED === 'true';
+}
+
+function sanitizeError(error: unknown) {
+  return error instanceof Error ? error.message.slice(0, 220) : 'Error desconocido';
+}
+
+function normalizeRecipientNumber(recipient: string) {
+  const digits = recipient.replace(/[^\d]/g, '');
+  if (!digits) throw new Error('Numero de WhatsApp invalido.');
+  if (digits.length === 10 && digits.startsWith('3')) return `57${digits}`;
+  return digits;
+}
+
+function normalizeOptionalNumber(recipient?: string | null) {
+  const digits = String(recipient || '').replace(/[^\d]/g, '');
+  if (!digits) return null;
+  if (digits.length === 10 && digits.startsWith('3')) return `57${digits}`;
+  return digits;
+}
+
+export function setWhatsAppInboundHandler(handler: WhatsAppInboundHandler | null) {
+  inboundHandler = handler;
+}
+
+export async function initializeWhatsAppWebClient() {
+  if (!isEnabled()) {
+    connection = 'disabled';
+    return;
+  }
+  if (initStarted || client) return;
+  initStarted = true;
+  connection = 'connecting';
+
+  try {
+    const whatsapp = await import('whatsapp-web.js');
+    const whatsappWeb = (whatsapp as any).default || whatsapp;
+    const { Client, LocalAuth } = whatsappWeb;
+    const sessionPath = process.env.WHATSAPP_SESSION_PATH || './.whatsapp-session';
+
+    client = new Client({
+      authStrategy: new LocalAuth({ dataPath: path.resolve(sessionPath) }),
+      puppeteer: {
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox']
+      }
+    });
+
+    client.on('qr', async (qr: string) => {
+      qrCodeDataUrl = await QRCode.toDataURL(qr);
+      connection = 'connecting';
+      lastError = null;
+    });
+
+    client.on('ready', () => {
+      qrCodeDataUrl = null;
+      connection = 'connected';
+      connectedNumber = normalizeOptionalNumber(client.info?.wid?.user || client.info?.wid?._serialized);
+      lastError = null;
+    });
+
+    client.on('authenticated', () => {
+      lastError = null;
+    });
+
+    client.on('auth_failure', (message: string) => {
+      connection = 'disconnected';
+      connectedNumber = null;
+      lastError = message.slice(0, 220);
+    });
+
+    client.on('disconnected', (reason: string) => {
+      connection = 'disconnected';
+      connectedNumber = null;
+      lastError = String(reason).slice(0, 220);
+      client = null;
+      initStarted = false;
+    });
+
+    client.on('message', async (message: any) => {
+      if (!inboundHandler || process.env.WHATSAPP_INBOUND_ENABLED !== 'true') return;
+      if (!message?.body?.trim()) return;
+      if (message.from?.includes('@g.us') && process.env.WHATSAPP_PROCESS_GROUPS !== 'true') return;
+      await inboundHandler({
+        whatsappMessageId: message.id?._serialized || message.id?.id,
+        from: message.from || '',
+        body: message.body,
+        raw: {
+          id: message.id,
+          from: message.from,
+          to: message.to,
+          timestamp: message.timestamp,
+          type: message.type
+        }
+      });
+    });
+
+    await client.initialize();
+  } catch (error) {
+    connection = 'disconnected';
+    connectedNumber = null;
+    lastError = sanitizeError(error);
+    client = null;
+    initStarted = false;
+  }
+}
+
+export async function sendWhatsAppWebMessage(recipient: string, message: string) {
+  if (!isEnabled()) throw new Error('WhatsApp Bridge desactivado.');
+  if (connection !== 'connected' || !client) throw new Error('WhatsApp Web no esta conectado.');
+  const phone = normalizeRecipientNumber(recipient);
+  const numberId = await client.getNumberId(phone);
+  if (!numberId?._serialized) {
+    throw new Error('El numero no existe en WhatsApp o debe incluir codigo de pais.');
+  }
+  await client.sendMessage(numberId._serialized, message);
+}
+
+export async function disconnectWhatsAppWebClient() {
+  try {
+    if (client) {
+      await client.logout().catch(() => null);
+      await client.destroy().catch(() => null);
+    }
+  } finally {
+    client = null;
+    initStarted = false;
+    qrCodeDataUrl = null;
+    connectedNumber = null;
+    connection = isEnabled() ? 'disconnected' : 'disabled';
+  }
+}
+
+export function getWhatsAppWebRuntimeStatus() {
+  return {
+    enabled: isEnabled(),
+    mode: process.env.WHATSAPP_BRIDGE_MODE || 'web',
+    connection,
+    connectedNumber,
+    qrPending: Boolean(qrCodeDataUrl),
+    qr: qrCodeDataUrl,
+    lastError
+  };
+}

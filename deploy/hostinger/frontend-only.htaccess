@@ -1,0 +1,11 @@
+# Solo usar si subes el frontend estatico a public_html.
+# Este proyecto completo necesita backend Node.js; este archivo NO ejecuta API ni WhatsApp Bridge.
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+  RewriteRule ^index\.html$ - [L]
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule . /index.html [L]
+</IfModule>

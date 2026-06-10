@@ -1939,8 +1939,12 @@ app.use((error: any, _req: Request, res: Response, _next: NextFunction) => {
 
 app.listen(port, () => {
   console.log(`API lista en http://localhost:${port}`);
-  startWhatsAppBridgeWorker(prisma, addMovement, processInboundDeliveryMessage, handleWhatsAppOutboxFinalFailure).catch((error: unknown) => {
-    console.error(error instanceof Error ? error.message : error);
-  });
+  if (process.env.WHATSAPP_BRIDGE_AUTOSTART === 'true') {
+    startWhatsAppBridgeWorker(prisma, addMovement, processInboundDeliveryMessage, handleWhatsAppOutboxFinalFailure).catch((error: unknown) => {
+      console.error(error instanceof Error ? error.message : error);
+    });
+  } else {
+    console.log('WhatsApp Bridge autostart desactivado; el panel interno permanece disponible.');
+  }
 });
 

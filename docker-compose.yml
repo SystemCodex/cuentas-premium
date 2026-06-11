@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: premium_accounts_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: premium
+      POSTGRES_PASSWORD: premium
+      POSTGRES_DB: premium_accounts
+    ports:
+      - "55433:5432"
+    volumes:
+      - premium_accounts_pg:/var/lib/postgresql/data
+
+volumes:
+  premium_accounts_pg:

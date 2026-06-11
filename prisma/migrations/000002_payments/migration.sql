@@ -9,8 +9,6 @@ ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "payment_provider" TEXT;
 ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "payment_amount" INTEGER;
 ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "payment_confirmed_at" TIMESTAMP(3);
 ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "payment_receipt_url" TEXT;
-ALTER TABLE "orders" ALTER COLUMN "status" SET DEFAULT 'pending_payment';
-
 CREATE TABLE IF NOT EXISTS "payments" (
   "id" TEXT NOT NULL PRIMARY KEY,
   "order_id" TEXT NOT NULL,

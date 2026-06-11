@@ -706,7 +706,15 @@ async function handleWhatsAppOutboxFinalFailure(item: { order_id: string | null;
 
 const codeLoginSchema = z.object({ access_code: z.string().regex(/^\d{4}$/, 'El codigo debe tener 4 digitos.') });
 
-app.get('/api/health', (_req, res) => res.json({ ok: true }));
+app.get('/api/health', async (_req, res) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    res.json({ ok: true, database: 'connected' });
+  } catch (error) {
+    console.error('[health:database]', error instanceof Error ? error.message : error);
+    res.status(503).json({ ok: false, database: 'unavailable' });
+  }
+});
 app.get('/favicon.ico', (_req, res) => res.status(204).end());
 
 app.post('/api/auth/register', authLimiter, (_req, res) => {
@@ -721,9 +729,13 @@ app.post('/api/auth/login', authLimiter, async (req, res, next) => {
       return res.status(401).json({ message: 'Codigo incorrecto.' });
     }
     const authUser = publicUser(user);
-    await addMovement('user.login', `Inicio de sesion: ${user.email}`, user.id);
-    res.json({ token: signToken(authUser), user: authUser });
+    const token = signToken(authUser);
+    res.json({ token, user: authUser });
+    void addMovement('user.login', `Inicio de sesion: ${user.email}`, user.id).catch((error: unknown) => {
+      console.error('[auth:login-audit]', error instanceof Error ? error.message : error);
+    });
   } catch (error) {
+    console.error('[auth:login]', error instanceof Error ? error.message : error);
     next(error);
   }
 });

@@ -26,7 +26,7 @@ import { sendAdminOrderNotificationEmail } from './services/email/index.js';
 
 const prisma = new PrismaClient();
 const app = express();
-const port = 3000;
+const port = Number(process.env.PORT || 3000);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const clientDistPath = path.resolve(process.cwd(), 'dist');
 const jwtSecret = process.env.JWT_SECRET;

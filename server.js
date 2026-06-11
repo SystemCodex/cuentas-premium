@@ -1,5 +1,7 @@
 import http from 'node:http';
 
+const port = Number(process.env.PORT || 3000);
+
 function startupCode(error) {
   const message = error instanceof Error ? error.message : String(error);
   if (message.includes('JWT_SECRET debe tener')) return 'WEAK_JWT_SECRET';
@@ -34,7 +36,7 @@ try {
     res.end(body);
   });
 
-  server.listen(3000, '0.0.0.0', () => {
-    console.error(`[startup:${code}] Servidor de diagnostico activo en el puerto 3000.`);
+  server.listen(port, '0.0.0.0', () => {
+    console.error(`[startup:${code}] Servidor de diagnostico activo en el puerto ${port}.`);
   });
 }

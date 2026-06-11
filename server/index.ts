@@ -26,7 +26,7 @@ import { sendAdminOrderNotificationEmail } from './services/email/index.js';
 
 const prisma = new PrismaClient();
 const app = express();
-const port = Number(process.env.PORT || 3000);
+const port = 3000;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const clientDistPath = path.resolve(process.cwd(), 'dist');
 const jwtSecret = process.env.JWT_SECRET;
@@ -707,6 +707,7 @@ async function handleWhatsAppOutboxFinalFailure(item: { order_id: string | null;
 const codeLoginSchema = z.object({ access_code: z.string().regex(/^\d{4}$/, 'El codigo debe tener 4 digitos.') });
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
+app.get('/favicon.ico', (_req, res) => res.status(204).end());
 
 app.post('/api/auth/register', authLimiter, (_req, res) => {
   return res.status(410).json({ message: 'Registro publico desactivado. Cada usuario debe tener un codigo asignado por administracion.' });
@@ -1937,7 +1938,7 @@ app.use((error: any, _req: Request, res: Response, _next: NextFunction) => {
   return res.status(500).json({ message: 'Error interno del servidor.' });
 });
 
-app.listen(port, () => {
+app.listen(port, '0.0.0.0', () => {
   console.log(`API lista en http://localhost:${port}`);
   if (process.env.WHATSAPP_BRIDGE_AUTOSTART === 'true') {
     startWhatsAppBridgeWorker(prisma, addMovement, processInboundDeliveryMessage, handleWhatsAppOutboxFinalFailure).catch((error: unknown) => {

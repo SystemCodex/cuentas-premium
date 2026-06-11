@@ -12,7 +12,8 @@ function retryDelayMs() {
 }
 
 function bridgeEnabled() {
-  return process.env.WHATSAPP_BRIDGE_ENABLED === 'true';
+  const value = process.env.WHATSAPP_BRIDGE_ENABLED?.trim().toLowerCase();
+  return value !== 'false' && value !== '0' && value !== 'off';
 }
 
 function sanitizeError(error: unknown) {

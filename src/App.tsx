@@ -491,6 +491,13 @@ function App() {
     await refreshAdminData();
   }
 
+  async function connectWhatsApp() {
+    const data = await request<{ status: WhatsAppBridgeStatus; message: string }>("/api/admin/whatsapp/connect", { method: "POST" });
+    setWhatsappStatus(data.status);
+    setNotice(data.message || "Vinculacion de WhatsApp iniciada.");
+    await loadWhatsAppStatus();
+  }
+
   async function disconnectWhatsApp() {
     const data = await request<{ status: WhatsAppBridgeStatus }>("/api/admin/whatsapp/disconnect", { method: "POST" });
     setWhatsappStatus(data.status);
@@ -618,7 +625,7 @@ function App() {
       {view === "cart" && user?.role === "client" && <CartPage cart={cart} total={cartTotal} changeQuantity={changeQuantity} removeFromCart={removeFromCart} checkout={checkout} busy={busy} onContinueShopping={() => setView("catalog")} />}
       {view === "client" && user?.role === "client" && <ClientPanel orders={orders} notifications={notifications} unreadNotifications={unreadNotifications} markNotificationRead={markNotificationRead} copy={copy} />}
       {view === "provider" && user?.role === "provider" && <ProviderPanel orders={orders} deliveries={providerDeliveries} deliver={deliver} busy={busy} />}
-      {view === "admin" && user?.role === "admin" && <AdminPanel dashboard={dashboard} users={users} products={products} orders={orders} pendingDeliveryOrders={pendingDeliveryOrders} pendingPayouts={pendingPayouts} providerConfig={providerConfig} whatsappStatus={whatsappStatus} whatsappQr={whatsappQr} adminLogs={adminLogs} saveProduct={saveProduct} saveProviderConfig={saveProviderConfig} saveAdminNotificationConfig={saveAdminNotificationConfig} retryWhatsAppFailed={retryWhatsAppFailed} disconnectWhatsApp={disconnectWhatsApp} testAdminWhatsApp={testAdminWhatsApp} markReceiptSent={markReceiptSent} previewDeliveryMessage={previewDeliveryMessage} approveParsedDelivery={approveParsedDelivery} saveDeliveryDraft={saveDeliveryDraft} updateStatus={updateStatus} saveOrderEdit={saveOrderEdit} copy={copy} />}
+      {view === "admin" && user?.role === "admin" && <AdminPanel dashboard={dashboard} users={users} products={products} orders={orders} pendingDeliveryOrders={pendingDeliveryOrders} pendingPayouts={pendingPayouts} providerConfig={providerConfig} whatsappStatus={whatsappStatus} whatsappQr={whatsappQr} adminLogs={adminLogs} saveProduct={saveProduct} saveProviderConfig={saveProviderConfig} saveAdminNotificationConfig={saveAdminNotificationConfig} connectWhatsApp={connectWhatsApp} retryWhatsAppFailed={retryWhatsAppFailed} disconnectWhatsApp={disconnectWhatsApp} testAdminWhatsApp={testAdminWhatsApp} markReceiptSent={markReceiptSent} previewDeliveryMessage={previewDeliveryMessage} approveParsedDelivery={approveParsedDelivery} saveDeliveryDraft={saveDeliveryDraft} updateStatus={updateStatus} saveOrderEdit={saveOrderEdit} copy={copy} />}
 
       <AddedProductModal
         product={selectedAddedProduct}
@@ -1143,7 +1150,7 @@ function OrderWorkCard({ order, deliver, busy }: {
   );
 }
 
-function AdminPanel({ dashboard, users, products, orders, pendingDeliveryOrders, pendingPayouts, providerConfig, whatsappStatus, whatsappQr, adminLogs, saveProduct, saveProviderConfig, saveAdminNotificationConfig, retryWhatsAppFailed, disconnectWhatsApp, testAdminWhatsApp, markReceiptSent, previewDeliveryMessage, approveParsedDelivery, saveDeliveryDraft, updateStatus, saveOrderEdit, copy }: {
+function AdminPanel({ dashboard, users, products, orders, pendingDeliveryOrders, pendingPayouts, providerConfig, whatsappStatus, whatsappQr, adminLogs, saveProduct, saveProviderConfig, saveAdminNotificationConfig, connectWhatsApp, retryWhatsAppFailed, disconnectWhatsApp, testAdminWhatsApp, markReceiptSent, previewDeliveryMessage, approveParsedDelivery, saveDeliveryDraft, updateStatus, saveOrderEdit, copy }: {
   dashboard: Dashboard | null;
   users: User[];
   products: Product[];
@@ -1157,6 +1164,7 @@ function AdminPanel({ dashboard, users, products, orders, pendingDeliveryOrders,
   saveProduct: (event: FormEvent<HTMLFormElement>, product?: Product) => void;
   saveProviderConfig: (event: FormEvent<HTMLFormElement>) => void;
   saveAdminNotificationConfig: (event: FormEvent<HTMLFormElement>) => void;
+  connectWhatsApp: () => void;
   retryWhatsAppFailed: () => void;
   disconnectWhatsApp: () => void;
   testAdminWhatsApp: () => void;
@@ -1543,9 +1551,10 @@ function AdminPanel({ dashboard, users, products, orders, pendingDeliveryOrders,
             )}
             {whatsappStatus?.lastError && <p className="error-text">{whatsappStatus.lastError}</p>}
             <div className="status-actions">
+              {whatsappStatus?.connection !== "connected" && <button className="btn-solid" onClick={connectWhatsApp}>Iniciar vinculacion</button>}
               <button onClick={retryWhatsAppFailed}>Reintentar fallidos</button>
               <button onClick={disconnectWhatsApp}>Desconectar sesion</button>
-              <button onClick={testAdminWhatsApp}>Probar envio</button>
+              <button onClick={testAdminWhatsApp} disabled={whatsappStatus?.connection !== "connected"}>Probar envio</button>
             </div>
           </section>
         )}

@@ -1441,6 +1441,22 @@ app.get('/api/admin/whatsapp/qr', sensitiveLimiter, requireAuth, requireRole('ad
         next(error);
     }
 });
+app.post('/api/admin/whatsapp/connect', sensitiveLimiter, requireAuth, requireRole('admin'), async (req, res, next) => {
+    try {
+        void startWhatsAppBridgeWorker(prisma, addMovement, processInboundDeliveryMessage, handleWhatsAppOutboxFinalFailure)
+            .catch((error) => {
+            console.error('[whatsapp:connect]', error instanceof Error ? error.message : error);
+        });
+        await addMovement('whatsapp.connection_requested', 'Admin inicio la vinculacion de WhatsApp Bridge.', req.user.id);
+        res.status(202).json({
+            status: await getWhatsAppBridgeStatus(prisma),
+            message: 'Vinculacion iniciada. El QR aparecera en unos segundos.'
+        });
+    }
+    catch (error) {
+        next(error);
+    }
+});
 app.post('/api/admin/whatsapp/retry-failed', sensitiveLimiter, requireAuth, requireRole('admin'), async (req, res, next) => {
     try {
         await retryFailedWhatsAppOutbox(prisma);
@@ -1844,7 +1860,7 @@ app.use((error, _req, res, _next) => {
 });
 app.listen(port, '0.0.0.0', () => {
     console.log(`API lista en http://localhost:${port}`);
-    if (process.env.WHATSAPP_BRIDGE_AUTOSTART === 'true') {
+    if (process.env.WHATSAPP_BRIDGE_AUTOSTART?.trim().toLowerCase() === 'true') {
         startWhatsAppBridgeWorker(prisma, addMovement, processInboundDeliveryMessage, handleWhatsAppOutboxFinalFailure).catch((error) => {
             console.error(error instanceof Error ? error.message : error);
         });

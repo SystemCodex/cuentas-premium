@@ -8,7 +8,8 @@ let initStarted = false;
 let inboundHandler = null;
 let connectedNumber = null;
 function isEnabled() {
-    return process.env.WHATSAPP_BRIDGE_ENABLED === 'true';
+    const value = process.env.WHATSAPP_BRIDGE_ENABLED?.trim().toLowerCase();
+    return value !== 'false' && value !== '0' && value !== 'off';
 }
 function sanitizeError(error) {
     return error instanceof Error ? error.message.slice(0, 220) : 'Error desconocido';
@@ -46,11 +47,19 @@ export async function initializeWhatsAppWebClient() {
         const whatsappWeb = whatsapp.default || whatsapp;
         const { Client, LocalAuth } = whatsappWeb;
         const sessionPath = process.env.WHATSAPP_SESSION_PATH || './.whatsapp-session';
+        const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH?.trim();
         client = new Client({
             authStrategy: new LocalAuth({ dataPath: path.resolve(sessionPath) }),
             puppeteer: {
                 headless: true,
-                args: ['--no-sandbox', '--disable-setuid-sandbox']
+                ...(executablePath ? { executablePath } : {}),
+                args: [
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-gpu',
+                    '--no-zygote'
+                ]
             }
         });
         client.on('qr', async (qr) => {

@@ -7,7 +7,8 @@ function retryDelayMs() {
     return Number(process.env.WHATSAPP_RETRY_DELAY_SECONDS || 30) * 1000;
 }
 function bridgeEnabled() {
-    return process.env.WHATSAPP_BRIDGE_ENABLED === 'true';
+    const value = process.env.WHATSAPP_BRIDGE_ENABLED?.trim().toLowerCase();
+    return value !== 'false' && value !== '0' && value !== 'off';
 }
 function sanitizeError(error) {
     return error instanceof Error ? error.message.replace(/\+?\d{7,15}/g, '[redacted]').slice(0, 220) : 'Error desconocido';

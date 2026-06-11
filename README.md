@@ -314,12 +314,19 @@ SMTP_USER=""
 SMTP_PASS=""
 SMTP_FROM=""
 WHATSAPP_BRIDGE_ENABLED="true"
+WHATSAPP_BRIDGE_AUTOSTART="true"
+WHATSAPP_SESSION_PATH="./.whatsapp-session"
 WHATSAPP_INBOUND_ENABLED="false"
 WHATSAPP_ALLOWED_INBOUND_NUMBERS=""
 WHATSAPP_ADMIN_PHONE=""
 WHATSAPP_RECEIVER_MODE="delivery_inbound"
 AUTO_DELIVERY_CONFIDENCE_THRESHOLD="85"
 ```
+
+La primera vinculacion se realiza desde `Admin > WhatsApp admin > Iniciar vinculacion`.
+Escanea el QR con `WhatsApp > Dispositivos vinculados > Vincular dispositivo`.
+En produccion, `WHATSAPP_SESSION_PATH` debe apuntar a almacenamiento persistente para
+que la sesion no se pierda al reiniciar o volver a desplegar la aplicacion.
 
 Frontend:
 

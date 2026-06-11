@@ -36,15 +36,15 @@ export async function disconnectWhatsAppBridge() {
 }
 
 export async function startWhatsAppBridgeWorker(prisma: PrismaClient, addMovement: AddMovement, inboundHandler?: WhatsAppInboundHandler, onFinalFailure?: WhatsAppOutboxFailureHandler) {
-  if (workerStarted) return;
-  workerStarted = true;
   if (inboundHandler) setWhatsAppInboundHandler(inboundHandler);
+  if (!workerStarted) {
+    workerStarted = true;
+    windowlessInterval(async () => {
+      await initializeWhatsAppWebClient();
+      await processWhatsAppOutbox(prisma, addMovement, onFinalFailure);
+    }, 5000);
+  }
   await initializeWhatsAppWebClient();
-
-  windowlessInterval(async () => {
-    await initializeWhatsAppWebClient();
-    await processWhatsAppOutbox(prisma, addMovement, onFinalFailure);
-  }, 5000);
 }
 
 function windowlessInterval(task: () => Promise<void>, ms: number) {

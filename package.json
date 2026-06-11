@@ -12,7 +12,7 @@
     "dev:api": "tsx watch server/index.ts",
     "dev:web": "vite --host 0.0.0.0",
     "postinstall": "prisma generate",
-    "build": "prisma generate && prisma migrate deploy && tsx prisma/seed.ts && tsx scripts/bootstrap-production.ts && vite build",
+    "build": "prisma generate && prisma migrate deploy && tsx prisma/seed.ts && tsx scripts/bootstrap-production.ts && vite build && tsc -p tsconfig.server.json",
     "build:server": "tsc -p tsconfig.server.json",
     "build:all": "prisma generate && vite build && tsc -p tsconfig.server.json",
     "start": "node server.js",

@@ -17,7 +17,15 @@ function isEnabled() {
     return runtimeEnabled && process.env.WHATSAPP_BRIDGE_HARD_DISABLED?.trim().toLowerCase() !== 'true';
 }
 function sanitizeError(error) {
-    return error instanceof Error ? error.message.slice(0, 220) : 'Error desconocido';
+    if (!(error instanceof Error))
+        return 'Error desconocido';
+    const nodeError = error;
+    const details = [
+        nodeError.code,
+        nodeError.syscall,
+        nodeError.path ? path.basename(nodeError.path) : undefined
+    ].filter(Boolean);
+    return `${error.message}${details.length ? ` [${details.join(' | ')}]` : ''}`.slice(0, 220);
 }
 function browserRetryDelayMs() {
     return Number(process.env.WHATSAPP_BROWSER_RETRY_SECONDS || 120) * 1000;

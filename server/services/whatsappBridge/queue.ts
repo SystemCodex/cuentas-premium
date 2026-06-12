@@ -1,6 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
-import { sendWhatsAppWebMessage } from './whatsappWebClient.js';
-import { getWhatsAppWebRuntimeStatus } from './whatsappWebClient.js';
+import { getWhatsAppRuntimeStatus, sendWhatsAppMessage } from './baileysClient.js';
 import type { AddMovement, QueueWhatsAppMessageInput, WhatsAppOutboxFailureHandler } from './types.js';
 
 function maxAttempts() {
@@ -9,11 +8,6 @@ function maxAttempts() {
 
 function retryDelayMs() {
   return Number(process.env.WHATSAPP_RETRY_DELAY_SECONDS || 30) * 1000;
-}
-
-function bridgeEnabled() {
-  const value = process.env.WHATSAPP_BRIDGE_ENABLED?.trim().toLowerCase();
-  return value !== 'false' && value !== '0' && value !== 'off';
 }
 
 function sanitizeError(error: unknown) {
@@ -73,8 +67,8 @@ export async function getWhatsAppOutboxCounts(prisma: PrismaClient) {
 }
 
 export async function processWhatsAppOutbox(prisma: PrismaClient, addMovement: AddMovement, onFinalFailure?: WhatsAppOutboxFailureHandler) {
-  if (!bridgeEnabled()) return;
-  if (getWhatsAppWebRuntimeStatus().connection !== 'connected') return;
+  const runtime = getWhatsAppRuntimeStatus();
+  if (!runtime.enabled || runtime.connection !== 'connected') return;
 
   const now = Date.now();
   const items = await prisma.whatsAppOutbox.findMany({
@@ -87,7 +81,7 @@ export async function processWhatsAppOutbox(prisma: PrismaClient, addMovement: A
     if (item.attempts > 0 && now - item.updated_at.getTime() < retryDelayMs()) continue;
 
     try {
-      await sendWhatsAppWebMessage(item.recipient, item.message);
+      await sendWhatsAppMessage(item.recipient, item.message);
       await prisma.whatsAppOutbox.update({
         where: { id: item.id },
         data: { status: 'sent', sent_at: new Date(), last_error: null }

@@ -1590,7 +1590,7 @@ function AdminPanel({ dashboard, users, products, orders, pendingDeliveryOrders,
             </form>
 
             <div className="notification-channel">
-              <h3>WhatsApp Bridge</h3>
+              <h3>WhatsApp Bridge Baileys</h3>
               <div className="dashboard-grid mini-metrics">
                 <Metric label="Bridge" value={whatsappStatus?.enabled ? "Activo" : "Inactivo"} />
                 <Metric label="Sesion" value={whatsappStatus?.connection || "-"} />
@@ -1609,10 +1609,10 @@ function AdminPanel({ dashboard, users, products, orders, pendingDeliveryOrders,
               {whatsappQr ? (
                 <div className="qr-panel">
                   <img src={whatsappQr} alt="QR de WhatsApp Bridge" />
-                  <p className="hint">Escanea el QR desde WhatsApp, Dispositivos vinculados.</p>
+                  <p className="hint">Escanea el QR desde WhatsApp, Dispositivos vinculados. La sesion se guarda cifrada en la base de datos.</p>
                 </div>
               ) : (
-                <p className="hint">{whatsappStatus?.qrPending ? "Generando QR..." : "Inicia la vinculacion para generar un QR o restaurar la sesion guardada."}</p>
+                <p className="hint">{whatsappStatus?.qrPending ? "QR Baileys listo para escanear." : "Inicia la vinculacion para generar un QR o restaurar la sesion cifrada."}</p>
               )}
               {whatsappStatus?.lastError && <p className="error-text">{whatsappStatus.lastError}</p>}
               <div className="status-actions">

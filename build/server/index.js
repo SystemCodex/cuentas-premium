@@ -74,9 +74,10 @@ app.use(express.json({
 }));
 const generalLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    limit: 400,
+    limit: 600,
     standardHeaders: true,
-    legacyHeaders: false
+    legacyHeaders: false,
+    skip: (req) => req.path === '/health' || Boolean(req.headers.authorization)
 });
 const authLimiter = rateLimit({
     windowMs: 5 * 60 * 1000,

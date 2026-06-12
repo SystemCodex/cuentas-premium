@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import jwt from 'jsonwebtoken';
 import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
@@ -79,11 +79,27 @@ const generalLimiter = rateLimit({
     legacyHeaders: false
 });
 const authLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    limit: 20,
+    windowMs: 5 * 60 * 1000,
+    limit: 12,
     standardHeaders: true,
     legacyHeaders: false,
-    message: { message: 'Demasiados intentos. Intenta de nuevo mas tarde.' }
+    skipSuccessfulRequests: true,
+    keyGenerator: (req) => {
+        const accessCode = typeof req.body?.access_code === 'string'
+            ? req.body.access_code.trim()
+            : 'sin-codigo';
+        const codeKey = crypto.createHash('sha256').update(accessCode).digest('hex').slice(0, 16);
+        return `${ipKeyGenerator(req.ip || 'unknown')}:${codeKey}`;
+    },
+    handler: (req, res, _next, options) => {
+        const rateLimitInfo = req.rateLimit;
+        const resetAt = rateLimitInfo?.resetTime?.getTime() || Date.now() + options.windowMs;
+        const retrySeconds = Math.max(1, Math.ceil((resetAt - Date.now()) / 1000));
+        res.setHeader('Retry-After', retrySeconds);
+        res.status(options.statusCode).json({
+            message: `Demasiados intentos fallidos. Intenta nuevamente en ${Math.ceil(retrySeconds / 60)} minuto(s).`
+        });
+    }
 });
 const sensitiveLimiter = rateLimit({
     windowMs: 60 * 1000,

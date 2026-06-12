@@ -1645,6 +1645,7 @@ function AdminPanel({ dashboard, users, products, orders, pendingDeliveryOrders,
                 <Metric label="Ultima prueba" value={emailStatus?.lastTestStatus || "Sin probar"} />
               </div>
               {emailStatus?.lastTestAt && <p className="hint">Ultima comprobacion: {formatDateTime(emailStatus.lastTestAt)}</p>}
+              {!emailStatus?.passwordConfigured && <p className="warning-text">Para Gmail debes guardar una contrasena de aplicacion de Google. La contrasena normal del correo no funciona.</p>}
               {emailStatus?.lastError && <p className="error-text">{emailStatus.lastError}</p>}
               <div className="status-actions">
                 <button className="btn-solid" onClick={testAdminEmail} disabled={!emailStatus?.configured}>Enviar correo de prueba</button>

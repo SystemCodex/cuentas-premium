@@ -16,11 +16,16 @@ export function getEnvironmentSmtpConfig() {
     };
 }
 export function emailConfigured(config = getEnvironmentSmtpConfig()) {
-    return Boolean(config.host && config.from);
+    return Boolean(config.host
+        && config.from
+        && (!config.user || config.pass));
 }
 function createSmtpTransport(config) {
-    if (!emailConfigured(config))
+    if (!config.host || !config.from)
         throw new Error('SMTP no configurado.');
+    if (config.user && !config.pass) {
+        throw new Error('Falta la contrasena de aplicacion SMTP.');
+    }
     return nodemailer.createTransport({
         host: config.host,
         port: config.port,

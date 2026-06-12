@@ -36,4 +36,4 @@ export async function sendAdminOrderNotificationEmail(order, payout, money, form
     const email = buildAdminOrderEmail(order, payout, money, formatDateTime);
     await sendSmtpEmail({ to, ...email }, smtpConfig);
 }
-export { sendSmtpEmail, verifySmtpConnection } from './smtpEmail.js';
+export { emailConfigured, sendSmtpEmail, verifySmtpConnection } from './smtpEmail.js';

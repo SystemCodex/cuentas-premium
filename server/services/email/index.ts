@@ -40,5 +40,5 @@ export async function sendAdminOrderNotificationEmail(order: any, payout: any, m
   await sendSmtpEmail({ to, ...email }, smtpConfig);
 }
 
-export { sendSmtpEmail, verifySmtpConnection } from './smtpEmail.js';
+export { emailConfigured, sendSmtpEmail, verifySmtpConnection } from './smtpEmail.js';
 export type { SmtpConfig } from './types.js';

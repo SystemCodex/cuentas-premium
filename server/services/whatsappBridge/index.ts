@@ -1,6 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
 import { enqueueWhatsAppMessage, getWhatsAppOutboxCounts, processWhatsAppOutbox, retryFailedWhatsAppMessages } from './queue.js';
-import { disconnectWhatsAppWebClient, getWhatsAppWebRuntimeStatus, initializeWhatsAppWebClient, setWhatsAppInboundHandler } from './whatsappWebClient.js';
+import { disableWhatsAppWebClient, disconnectWhatsAppWebClient, enableWhatsAppWebClient, getWhatsAppWebRuntimeStatus, initializeWhatsAppWebClient, setWhatsAppInboundHandler } from './whatsappWebClient.js';
 import type { AddMovement, QueueWhatsAppMessageInput, WhatsAppInboundHandler, WhatsAppOutboxFailureHandler } from './types.js';
 
 let workerStarted = false;
@@ -33,6 +33,11 @@ export async function retryFailedWhatsAppOutbox(prisma: PrismaClient) {
 
 export async function disconnectWhatsAppBridge() {
   await disconnectWhatsAppWebClient();
+  disableWhatsAppWebClient();
+}
+
+export function enableWhatsAppBridge() {
+  enableWhatsAppWebClient();
 }
 
 export async function startWhatsAppBridgeWorker(prisma: PrismaClient, addMovement: AddMovement, inboundHandler?: WhatsAppInboundHandler, onFinalFailure?: WhatsAppOutboxFailureHandler) {

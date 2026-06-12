@@ -1,5 +1,5 @@
 import { enqueueWhatsAppMessage, getWhatsAppOutboxCounts, processWhatsAppOutbox, retryFailedWhatsAppMessages } from './queue.js';
-import { disconnectWhatsAppWebClient, getWhatsAppWebRuntimeStatus, initializeWhatsAppWebClient, setWhatsAppInboundHandler } from './whatsappWebClient.js';
+import { disableWhatsAppWebClient, disconnectWhatsAppWebClient, enableWhatsAppWebClient, getWhatsAppWebRuntimeStatus, initializeWhatsAppWebClient, setWhatsAppInboundHandler } from './whatsappWebClient.js';
 let workerStarted = false;
 export async function queueWhatsAppNotification(prisma, input) {
     return enqueueWhatsAppMessage(prisma, input);
@@ -25,6 +25,10 @@ export async function retryFailedWhatsAppOutbox(prisma) {
 }
 export async function disconnectWhatsAppBridge() {
     await disconnectWhatsAppWebClient();
+    disableWhatsAppWebClient();
+}
+export function enableWhatsAppBridge() {
+    enableWhatsAppWebClient();
 }
 export async function startWhatsAppBridgeWorker(prisma, addMovement, inboundHandler, onFinalFailure) {
     if (inboundHandler)

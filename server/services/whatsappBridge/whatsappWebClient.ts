@@ -9,10 +9,13 @@ let lastError: string | null = null;
 let initStarted = false;
 let inboundHandler: WhatsAppInboundHandler | null = null;
 let connectedNumber: string | null = null;
-
-function isEnabled() {
+let runtimeEnabled = (() => {
   const value = process.env.WHATSAPP_BRIDGE_ENABLED?.trim().toLowerCase();
   return value !== 'false' && value !== '0' && value !== 'off';
+})();
+
+function isEnabled() {
+  return runtimeEnabled && process.env.WHATSAPP_BRIDGE_HARD_DISABLED?.trim().toLowerCase() !== 'true';
 }
 
 function sanitizeError(error: unknown) {
@@ -35,6 +38,16 @@ function normalizeOptionalNumber(recipient?: string | null) {
 
 export function setWhatsAppInboundHandler(handler: WhatsAppInboundHandler | null) {
   inboundHandler = handler;
+}
+
+export function enableWhatsAppWebClient() {
+  runtimeEnabled = true;
+  if (connection === 'disabled') connection = 'disconnected';
+}
+
+export function disableWhatsAppWebClient() {
+  runtimeEnabled = false;
+  connection = 'disabled';
 }
 
 export async function initializeWhatsAppWebClient() {

@@ -9,7 +9,7 @@ import rateLimit from 'express-rate-limit';
 import jwt from 'jsonwebtoken';
 import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
-import { disconnectWhatsAppBridge, getWhatsAppBridgeQr, getWhatsAppBridgeStatus, queueWhatsAppNotification, retryFailedWhatsAppOutbox, startWhatsAppBridgeWorker } from './services/whatsappBridge/index.js';
+import { disconnectWhatsAppBridge, enableWhatsAppBridge, getWhatsAppBridgeQr, getWhatsAppBridgeStatus, queueWhatsAppNotification, retryFailedWhatsAppOutbox, startWhatsAppBridgeWorker } from './services/whatsappBridge/index.js';
 import { parseAccountMessage, serviceKeyFromText } from './services/inboundDeliveryParser/index.js';
 import { parseDeliveryMessage } from './services/deliveryParser/index.js';
 import { sendAdminOrderNotificationEmail, sendSmtpEmail, verifySmtpConnection } from './services/email/index.js';
@@ -1527,6 +1527,8 @@ app.get('/api/admin/whatsapp/qr', sensitiveLimiter, requireAuth, requireRole('ad
 });
 app.post('/api/admin/whatsapp/connect', sensitiveLimiter, requireAuth, requireRole('admin'), async (req, res, next) => {
     try {
+        enableWhatsAppBridge();
+        await upsertSetting('whatsapp_bridge_admin_enabled', 'true');
         void startWhatsAppBridgeWorker(prisma, addMovement, processInboundDeliveryMessage, handleWhatsAppOutboxFinalFailure)
             .catch((error) => {
             console.error('[whatsapp:connect]', error instanceof Error ? error.message : error);
@@ -1554,6 +1556,7 @@ app.post('/api/admin/whatsapp/retry-failed', sensitiveLimiter, requireAuth, requ
 app.post('/api/admin/whatsapp/disconnect', sensitiveLimiter, requireAuth, requireRole('admin'), async (req, res, next) => {
     try {
         await disconnectWhatsAppBridge();
+        await upsertSetting('whatsapp_bridge_admin_enabled', 'false');
         await addMovement('whatsapp.disconnected', 'Admin desconecto la sesion de WhatsApp Bridge.', req.user.id);
         res.json({ status: await getWhatsAppBridgeStatus(prisma) });
     }
@@ -2021,12 +2024,17 @@ app.use((error, _req, res, _next) => {
 });
 app.listen(port, '0.0.0.0', () => {
     console.log(`API lista en http://localhost:${port}`);
-    if (process.env.WHATSAPP_BRIDGE_AUTOSTART?.trim().toLowerCase() === 'true') {
-        startWhatsAppBridgeWorker(prisma, addMovement, processInboundDeliveryMessage, handleWhatsAppOutboxFinalFailure).catch((error) => {
-            console.error(error instanceof Error ? error.message : error);
-        });
-    }
-    else {
-        console.log('WhatsApp Bridge autostart desactivado; el panel interno permanece disponible.');
-    }
+    void (async () => {
+        const adminEnabled = await getSettingValue('whatsapp_bridge_admin_enabled');
+        const shouldStart = adminEnabled === 'true' ||
+            (adminEnabled !== 'false' && process.env.WHATSAPP_BRIDGE_AUTOSTART?.trim().toLowerCase() === 'true');
+        if (!shouldStart) {
+            console.log('WhatsApp Bridge autostart desactivado; el panel interno permanece disponible.');
+            return;
+        }
+        enableWhatsAppBridge();
+        await startWhatsAppBridgeWorker(prisma, addMovement, processInboundDeliveryMessage, handleWhatsAppOutboxFinalFailure);
+    })().catch((error) => {
+        console.error(error instanceof Error ? error.message : error);
+    });
 });

@@ -8,10 +8,9 @@
 node_modules/
 .npm/
 
-# WhatsApp Web session and browser cache
+# Legacy WhatsApp Web session and browser cache
 .whatsapp-session/
 .wwebjs_cache/
-.cache/puppeteer/
 
 # Runtime files
 logs/

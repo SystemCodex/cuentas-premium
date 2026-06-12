@@ -1,14 +1,9 @@
-import { sendWhatsAppWebMessage } from './whatsappWebClient.js';
-import { getWhatsAppWebRuntimeStatus } from './whatsappWebClient.js';
+import { getWhatsAppRuntimeStatus, sendWhatsAppMessage } from './baileysClient.js';
 function maxAttempts() {
     return Number(process.env.WHATSAPP_MAX_ATTEMPTS || 3);
 }
 function retryDelayMs() {
     return Number(process.env.WHATSAPP_RETRY_DELAY_SECONDS || 30) * 1000;
-}
-function bridgeEnabled() {
-    const value = process.env.WHATSAPP_BRIDGE_ENABLED?.trim().toLowerCase();
-    return value !== 'false' && value !== '0' && value !== 'off';
 }
 function sanitizeError(error) {
     return error instanceof Error ? error.message.replace(/\+?\d{7,15}/g, '[redacted]').slice(0, 220) : 'Error desconocido';
@@ -63,9 +58,8 @@ export async function getWhatsAppOutboxCounts(prisma) {
     return { pending, sent, failed };
 }
 export async function processWhatsAppOutbox(prisma, addMovement, onFinalFailure) {
-    if (!bridgeEnabled())
-        return;
-    if (getWhatsAppWebRuntimeStatus().connection !== 'connected')
+    const runtime = getWhatsAppRuntimeStatus();
+    if (!runtime.enabled || runtime.connection !== 'connected')
         return;
     const now = Date.now();
     const items = await prisma.whatsAppOutbox.findMany({
@@ -77,7 +71,7 @@ export async function processWhatsAppOutbox(prisma, addMovement, onFinalFailure)
         if (item.attempts > 0 && now - item.updated_at.getTime() < retryDelayMs())
             continue;
         try {
-            await sendWhatsAppWebMessage(item.recipient, item.message);
+            await sendWhatsAppMessage(item.recipient, item.message);
             await prisma.whatsAppOutbox.update({
                 where: { id: item.id },
                 data: { status: 'sent', sent_at: new Date(), last_error: null }

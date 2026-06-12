@@ -30,7 +30,7 @@ WHATSAPP_PROVIDER_NUMBER=""
 ADMIN_NOTIFICATION_PHONE=""
 WHATSAPP_BRIDGE_ENABLED="true"
 WHATSAPP_BRIDGE_MODE="web"
-WHATSAPP_SESSION_PATH="./.whatsapp-session"
+WHATSAPP_BRIDGE_MODE="baileys"
 WHATSAPP_MAX_ATTEMPTS="3"
 WHATSAPP_RETRY_DELAY_SECONDS="30"
 VITE_API_URL=""
@@ -52,7 +52,7 @@ Notas:
 - `APP_ENCRYPTION_KEY` debe ser estable porque protege contrasenas entregadas.
 - Solo `VITE_API_URL` va al navegador.
 - `ADMIN_NOTIFICATION_PHONE` vive solo en backend y recibe los avisos de pedidos pendientes de pago.
-- `WHATSAPP_SESSION_PATH` debe usar volumen persistente en produccion.
+- La sesion Baileys se guarda cifrada en PostgreSQL; no requiere volumen persistente.
 
 ## Comandos Locales
 
@@ -171,11 +171,11 @@ Estos datos solo son visibles para admin.
 
 ## WhatsApp Bridge
 
-No se usa WhatsApp Cloud API. El sistema usa un bridge interno con WhatsApp Web (`whatsapp-web.js`) controlado desde backend/admin.
+No se usa WhatsApp Cloud API. El sistema usa un bridge interno basado en Baileys, controlado exclusivamente desde backend/admin y sin Chromium.
 
 Funcionamiento:
 - El admin escanea el QR en el dashboard.
-- La sesion queda guardada en `WHATSAPP_SESSION_PATH`.
+- La sesion y las claves de cifrado de WhatsApp se guardan cifradas en PostgreSQL usando `APP_ENCRYPTION_KEY`.
 - Al crear un pedido, el backend crea un `WhatsAppOutbox` para avisar al admin.
 - El worker envia el mensaje automaticamente si la sesion esta conectada.
 - Si WhatsApp falla, el pedido no falla; queda en el panel admin.
@@ -298,7 +298,7 @@ Movimientos relevantes:
 - `JWT_SECRET` y `APP_ENCRYPTION_KEY` son fuertes.
 - No hay `wa.me`, `whatsappUrl`, `window.open` ni WhatsApp Cloud API.
 - El proveedor ve pedidos pendientes en vivo y solo estados simples: pendiente/entregado.
-- `WHATSAPP_SESSION_PATH` usa volumen persistente.
+- `APP_ENCRYPTION_KEY` permanece estable para poder restaurar la sesion Baileys.
 
 ## Variables Minimas Para Subir A La Red
 
@@ -320,7 +320,9 @@ SMTP_PASS=""
 SMTP_FROM=""
 WHATSAPP_BRIDGE_ENABLED="true"
 WHATSAPP_BRIDGE_AUTOSTART="true"
-WHATSAPP_SESSION_PATH="./.whatsapp-session"
+WHATSAPP_BRIDGE_MODE="baileys"
+WHATSAPP_RECONNECT_DELAY_SECONDS="10"
+WHATSAPP_BAILEYS_LOG_LEVEL="silent"
 WHATSAPP_INBOUND_ENABLED="false"
 WHATSAPP_ALLOWED_INBOUND_NUMBERS=""
 WHATSAPP_ADMIN_PHONE=""
@@ -330,10 +332,9 @@ AUTO_DELIVERY_CONFIDENCE_THRESHOLD="85"
 
 La primera vinculacion se realiza desde `Admin > WhatsApp admin > Iniciar vinculacion`.
 Escanea el QR con `WhatsApp > Dispositivos vinculados > Vincular dispositivo`.
-En produccion, `WHATSAPP_SESSION_PATH` debe apuntar a almacenamiento persistente para
-que la sesion no se pierda al reiniciar o volver a desplegar la aplicacion.
-El comando de compilacion instala Chrome en `.cache/puppeteer`, dentro del proyecto,
-para que `whatsapp-web.js` pueda iniciar en Hostinger.
+En produccion no se necesita Chrome, Puppeteer ni un volumen para la sesion.
+Baileys recupera el estado cifrado desde PostgreSQL después de cada reinicio o despliegue.
+`APP_ENCRYPTION_KEY` debe permanecer estable; cambiarla invalida la sesion guardada.
 
 Frontend:
 

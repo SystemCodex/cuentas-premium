@@ -553,7 +553,13 @@ function buildAdminPaymentPendingMessage(order, payout) {
     return lines.join('\n');
 }
 async function getSettingMap() {
-    const settings = await prisma.appSetting.findMany();
+    const settings = await prisma.appSetting.findMany({
+        where: {
+            key: {
+                notIn: ['whatsapp_baileys_creds_v1', 'whatsapp_baileys_keys_v1']
+            }
+        }
+    });
     return new Map(settings.map((setting) => [setting.key, setting.value]));
 }
 async function upsertSetting(key, value, isPrivate = true) {

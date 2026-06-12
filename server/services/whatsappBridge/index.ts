@@ -1,6 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
 import { enqueueWhatsAppMessage, getWhatsAppOutboxCounts, processWhatsAppOutbox, retryFailedWhatsAppMessages } from './queue.js';
-import { disableWhatsAppWebClient, disconnectWhatsAppWebClient, enableWhatsAppWebClient, getWhatsAppWebRuntimeStatus, initializeWhatsAppWebClient, setWhatsAppInboundHandler } from './whatsappWebClient.js';
+import { disableWhatsAppClient, disconnectWhatsAppClient, enableWhatsAppClient, getWhatsAppRuntimeStatus, initializeWhatsAppClient, setWhatsAppInboundHandler } from './baileysClient.js';
 import type { AddMovement, QueueWhatsAppMessageInput, WhatsAppInboundHandler, WhatsAppOutboxFailureHandler } from './types.js';
 
 let workerStarted = false;
@@ -10,7 +10,7 @@ export async function queueWhatsAppNotification(prisma: PrismaClient, input: Que
 }
 
 export async function getWhatsAppBridgeStatus(prisma: PrismaClient) {
-  const runtime = getWhatsAppWebRuntimeStatus();
+  const runtime = getWhatsAppRuntimeStatus();
   const counts = await getWhatsAppOutboxCounts(prisma);
   return {
     enabled: runtime.enabled,
@@ -24,7 +24,7 @@ export async function getWhatsAppBridgeStatus(prisma: PrismaClient) {
 }
 
 export function getWhatsAppBridgeQr() {
-  return getWhatsAppWebRuntimeStatus().qr;
+  return getWhatsAppRuntimeStatus().qr;
 }
 
 export async function retryFailedWhatsAppOutbox(prisma: PrismaClient) {
@@ -32,12 +32,12 @@ export async function retryFailedWhatsAppOutbox(prisma: PrismaClient) {
 }
 
 export async function disconnectWhatsAppBridge() {
-  await disconnectWhatsAppWebClient();
-  disableWhatsAppWebClient();
+  await disconnectWhatsAppClient();
+  disableWhatsAppClient();
 }
 
 export function enableWhatsAppBridge() {
-  enableWhatsAppWebClient();
+  enableWhatsAppClient();
 }
 
 export async function startWhatsAppBridgeWorker(prisma: PrismaClient, addMovement: AddMovement, inboundHandler?: WhatsAppInboundHandler, onFinalFailure?: WhatsAppOutboxFailureHandler) {
@@ -45,11 +45,11 @@ export async function startWhatsAppBridgeWorker(prisma: PrismaClient, addMovemen
   if (!workerStarted) {
     workerStarted = true;
     windowlessInterval(async () => {
-      await initializeWhatsAppWebClient();
+      await initializeWhatsAppClient(prisma);
       await processWhatsAppOutbox(prisma, addMovement, onFinalFailure);
     }, 5000);
   }
-  await initializeWhatsAppWebClient();
+  await initializeWhatsAppClient(prisma);
 }
 
 function windowlessInterval(task: () => Promise<void>, ms: number) {

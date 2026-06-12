@@ -13,6 +13,24 @@ import { disconnectWhatsAppBridge, getWhatsAppBridgeQr, getWhatsAppBridgeStatus,
 import { parseAccountMessage, serviceKeyFromText } from './services/inboundDeliveryParser/index.js';
 import { parseDeliveryMessage } from './services/deliveryParser/index.js';
 import { sendAdminOrderNotificationEmail, sendSmtpEmail, verifySmtpConnection } from './services/email/index.js';
+function configureRuntimeDatabaseUrl() {
+    const raw = process.env.DATABASE_URL;
+    const usePooler = process.env.DATABASE_USE_POOLER?.trim().toLowerCase() !== 'false';
+    if (!raw || process.env.NODE_ENV !== 'production' || !usePooler)
+        return;
+    try {
+        const databaseUrl = new URL(raw);
+        const [endpoint, ...domainParts] = databaseUrl.hostname.split('.');
+        if (databaseUrl.hostname.endsWith('.neon.tech') && endpoint && !endpoint.endsWith('-pooler')) {
+            databaseUrl.hostname = [`${endpoint}-pooler`, ...domainParts].join('.');
+            process.env.DATABASE_URL = databaseUrl.toString();
+        }
+    }
+    catch {
+        // Prisma will report a sanitized connection error through the health check.
+    }
+}
+configureRuntimeDatabaseUrl();
 const prisma = new PrismaClient();
 const app = express();
 const port = Number(process.env.PORT || 3000);
@@ -681,11 +699,24 @@ const codeLoginSchema = z.object({ access_code: z.string().regex(/^\d{4}$/, 'El 
 app.get('/api/health', async (_req, res) => {
     try {
         await prisma.$queryRaw `SELECT 1`;
-        res.json({ ok: true, database: 'connected' });
+        const databaseHost = (() => {
+            try {
+                return new URL(process.env.DATABASE_URL || '').hostname;
+            }
+            catch {
+                return '';
+            }
+        })();
+        res.json({
+            ok: true,
+            database: 'connected',
+            databaseMode: databaseHost.includes('-pooler.') ? 'pooled' : 'direct'
+        });
     }
     catch (error) {
         console.error('[health:database]', error instanceof Error ? error.message : error);
-        res.status(503).json({ ok: false, database: 'unavailable' });
+        const errorCode = typeof error === 'object' && error && 'code' in error ? String(error.code) : 'UNKNOWN';
+        res.status(503).json({ ok: false, database: 'unavailable', errorCode });
     }
 });
 app.get('/favicon.ico', (_req, res) => res.status(204).end());

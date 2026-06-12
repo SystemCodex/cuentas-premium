@@ -306,6 +306,7 @@ Backend:
 
 ```env
 DATABASE_URL="postgresql://..."
+DATABASE_USE_POOLER="true"
 JWT_SECRET="clave-larga-y-segura"
 APP_ENCRYPTION_KEY="clave-estable-de-32-caracteres-o-mas"
 CORS_ORIGIN="https://tu-frontend.com"

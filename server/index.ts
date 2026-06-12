@@ -770,15 +770,15 @@ async function handleWhatsAppOutboxFinalFailure(item: { order_id: string | null;
 const codeLoginSchema = z.object({ access_code: z.string().regex(/^\d{4}$/, 'El codigo debe tener 4 digitos.') });
 
 app.get('/api/health', async (_req, res) => {
+  const databaseHost = (() => {
+    try {
+      return new URL(process.env.DATABASE_URL || '').hostname;
+    } catch {
+      return '';
+    }
+  })();
   try {
     await prisma.$queryRaw`SELECT 1`;
-    const databaseHost = (() => {
-      try {
-        return new URL(process.env.DATABASE_URL || '').hostname;
-      } catch {
-        return '';
-      }
-    })();
     res.json({
       ok: true,
       database: 'connected',
@@ -787,7 +787,21 @@ app.get('/api/health', async (_req, res) => {
   } catch (error) {
     console.error('[health:database]', error instanceof Error ? error.message : error);
     const errorCode = typeof error === 'object' && error && 'code' in error ? String(error.code) : 'UNKNOWN';
-    res.status(503).json({ ok: false, database: 'unavailable', errorCode });
+    const rawMessage = error instanceof Error ? error.message : String(error);
+    const errorReason =
+      rawMessage.includes("Can't reach database server") ? 'unreachable' :
+      rawMessage.includes('Authentication failed') ? 'authentication_failed' :
+      rawMessage.includes('invalid') && rawMessage.includes('DATABASE_URL') ? 'invalid_url' :
+      rawMessage.toLowerCase().includes('tls') || rawMessage.toLowerCase().includes('ssl') ? 'tls_error' :
+      'unknown';
+    res.status(503).json({
+      ok: false,
+      database: 'unavailable',
+      databaseMode: databaseHost.includes('-pooler.') ? 'pooled' : 'direct',
+      databaseHost,
+      errorCode,
+      errorReason
+    });
   }
 });
 app.get('/favicon.ico', (_req, res) => res.status(204).end());

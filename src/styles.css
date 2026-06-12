@@ -1045,6 +1045,26 @@ textarea {
   font-size: 18px;
 }
 
+.notification-channel {
+  display: grid;
+  gap: 12px;
+  padding: 22px 0;
+  border-top: 1px solid rgba(15, 23, 42, 0.09);
+}
+
+.notification-channel h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.notification-channel .product-form {
+  margin: 0;
+}
+
+.email-metrics .metric strong {
+  overflow-wrap: anywhere;
+}
+
 .qr-panel {
   display: grid;
   gap: 10px;
@@ -1616,6 +1636,11 @@ th {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+.status-actions .btn-solid {
+  background: #0f172a;
+  color: #fff;
 }
 
 .data-list > div,

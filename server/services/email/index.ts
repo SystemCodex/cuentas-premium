@@ -1,4 +1,5 @@
 import { sendSmtpEmail } from './smtpEmail.js';
+import type { SmtpConfig } from './types.js';
 
 export function buildAdminOrderEmail(order: any, payout: any, money: (value: number) => string, formatDateTime: (value: Date | string) => string) {
   const text = [
@@ -32,9 +33,12 @@ export function buildAdminOrderEmail(order: any, payout: any, money: (value: num
   };
 }
 
-export async function sendAdminOrderNotificationEmail(order: any, payout: any, money: (value: number) => string, formatDateTime: (value: Date | string) => string, overrideTo?: string) {
+export async function sendAdminOrderNotificationEmail(order: any, payout: any, money: (value: number) => string, formatDateTime: (value: Date | string) => string, overrideTo?: string, smtpConfig?: SmtpConfig) {
   const to = overrideTo || process.env.ADMIN_NOTIFICATION_EMAIL || '';
   if (!to) throw new Error('ADMIN_NOTIFICATION_EMAIL no configurado.');
   const email = buildAdminOrderEmail(order, payout, money, formatDateTime);
-  await sendSmtpEmail({ to, ...email });
+  await sendSmtpEmail({ to, ...email }, smtpConfig);
 }
+
+export { sendSmtpEmail, verifySmtpConnection } from './smtpEmail.js';
+export type { SmtpConfig } from './types.js';

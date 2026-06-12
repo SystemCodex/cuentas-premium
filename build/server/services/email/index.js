@@ -29,10 +29,11 @@ export function buildAdminOrderEmail(order, payout, money, formatDateTime) {
         text
     };
 }
-export async function sendAdminOrderNotificationEmail(order, payout, money, formatDateTime, overrideTo) {
+export async function sendAdminOrderNotificationEmail(order, payout, money, formatDateTime, overrideTo, smtpConfig) {
     const to = overrideTo || process.env.ADMIN_NOTIFICATION_EMAIL || '';
     if (!to)
         throw new Error('ADMIN_NOTIFICATION_EMAIL no configurado.');
     const email = buildAdminOrderEmail(order, payout, money, formatDateTime);
-    await sendSmtpEmail({ to, ...email });
+    await sendSmtpEmail({ to, ...email }, smtpConfig);
 }
+export { sendSmtpEmail, verifySmtpConnection } from './smtpEmail.js';

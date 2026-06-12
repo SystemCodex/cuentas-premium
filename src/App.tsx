@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import type { CartItem, Dashboard, DeliveryDraft, DeliveryParserItem, DeliveryParserPreview, Notification, Order, OrderItem, OrderStatus, Payment, Product, ProviderConfig, ProviderDelivery, ProviderPayout, Role, SystemLog, User, WhatsAppBridgeStatus, WhatsAppInboundMessage } from "./types";
+import type { CartItem, Dashboard, DeliveryDraft, DeliveryParserItem, DeliveryParserPreview, EmailStatus, Notification, Order, OrderItem, OrderStatus, Payment, Product, ProviderConfig, ProviderDelivery, ProviderPayout, Role, SystemLog, User, WhatsAppBridgeStatus, WhatsAppInboundMessage } from "./types";
 
 const API_URL = import.meta.env.VITE_API_URL || "";
 const money = new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
@@ -104,6 +104,7 @@ function App() {
   const [providerConfig, setProviderConfig] = useState<ProviderConfig | null>(null);
   const [whatsappStatus, setWhatsappStatus] = useState<WhatsAppBridgeStatus | null>(null);
   const [whatsappQr, setWhatsappQr] = useState<string | null>(null);
+  const [emailStatus, setEmailStatus] = useState<EmailStatus | null>(null);
   const [pendingPayouts, setPendingPayouts] = useState<ProviderPayout[]>([]);
   const [pendingDeliveryOrders, setPendingDeliveryOrders] = useState<Order[]>([]);
   const [providerDeliveries, setProviderDeliveries] = useState<ProviderDelivery[]>([]);
@@ -226,6 +227,12 @@ function App() {
     }
   }
 
+  async function loadEmailStatus() {
+    if (user?.role !== "admin") return;
+    const data = await request<{ status: EmailStatus }>("/api/admin/email/status");
+    setEmailStatus(data.status);
+  }
+
   async function loadPendingPayouts() {
     if (user?.role !== "admin") return;
     const data = await request<{ payouts: ProviderPayout[] }>("/api/admin/payouts/pending");
@@ -283,7 +290,7 @@ function App() {
   }
 
   async function refreshAdminData() {
-    await Promise.all([loadDashboard(), loadOrders(), loadUsers(), loadProducts(), loadProviderConfig(), loadPendingPayouts(), loadPendingDeliveryOrders(), loadWhatsAppStatus(), loadDeliveryDrafts(), loadWhatsAppInbound(), loadAdminLogs()]);
+    await Promise.all([loadDashboard(), loadOrders(), loadUsers(), loadProducts(), loadProviderConfig(), loadPendingPayouts(), loadPendingDeliveryOrders(), loadWhatsAppStatus(), loadEmailStatus(), loadDeliveryDrafts(), loadWhatsAppInbound(), loadAdminLogs()]);
   }
 
   function addToCart(product: Product) {
@@ -480,8 +487,42 @@ function App() {
       })
     });
     setProviderConfig((current) => ({ ...(current || ({} as ProviderConfig)), ...data }));
-    setNotice("WhatsApp del admin actualizado.");
+    setNotice("Destinos de WhatsApp y correo actualizados.");
     await refreshAdminData();
+  }
+
+  async function saveEmailConfig(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    try {
+      const form = new FormData(event.currentTarget);
+      const data = await request<{ status: EmailStatus }>("/api/admin/email/config", {
+        method: "PATCH",
+        body: JSON.stringify({
+          host: form.get("smtp_host"),
+          port: Number(form.get("smtp_port") || 587),
+          secure: form.get("smtp_secure") === "true",
+          user: form.get("smtp_user"),
+          password: form.get("smtp_password"),
+          from: form.get("smtp_from")
+        })
+      });
+      setEmailStatus(data.status);
+      setNotice("Configuracion SMTP guardada de forma cifrada.");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "No se pudo guardar la configuracion SMTP.");
+    }
+  }
+
+  async function testAdminEmail() {
+    try {
+      const data = await request<{ status: EmailStatus; message: string }>("/api/admin/email/test", { method: "POST" });
+      setEmailStatus(data.status);
+      setNotice(data.message || "Correo de prueba enviado.");
+      await loadAdminLogs();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "No se pudo enviar el correo de prueba.");
+      await loadEmailStatus();
+    }
   }
 
   async function retryWhatsAppFailed() {
@@ -492,10 +533,23 @@ function App() {
   }
 
   async function connectWhatsApp() {
-    const data = await request<{ status: WhatsAppBridgeStatus; message: string }>("/api/admin/whatsapp/connect", { method: "POST" });
-    setWhatsappStatus(data.status);
-    setNotice(data.message || "Vinculacion de WhatsApp iniciada.");
-    await loadWhatsAppStatus();
+    try {
+      const data = await request<{ status: WhatsAppBridgeStatus; message: string }>("/api/admin/whatsapp/connect", { method: "POST" });
+      setWhatsappStatus(data.status);
+      setNotice(data.message || "Vinculacion de WhatsApp iniciada.");
+      for (let attempt = 0; attempt < 8; attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 1500));
+        const current = await request<{ status: WhatsAppBridgeStatus }>("/api/admin/whatsapp/status");
+        setWhatsappStatus(current.status);
+        if (current.status.qrPending) {
+          const qrData = await request<{ qr: string | null }>("/api/admin/whatsapp/qr");
+          setWhatsappQr(qrData.qr);
+        }
+        if (current.status.qrPending || current.status.connection === "connected" || current.status.lastError) break;
+      }
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "No se pudo iniciar la vinculacion.");
+    }
   }
 
   async function disconnectWhatsApp() {
@@ -507,10 +561,15 @@ function App() {
   }
 
   async function testAdminWhatsApp() {
-    const data = await request<{ status: WhatsAppBridgeStatus; message: string }>("/api/admin/whatsapp/test", { method: "POST" });
-    setWhatsappStatus(data.status);
-    setNotice(data.message || "Mensaje de prueba agregado a la cola.");
-    await refreshAdminData();
+    try {
+      const data = await request<{ status: WhatsAppBridgeStatus; message: string }>("/api/admin/whatsapp/test", { method: "POST" });
+      setWhatsappStatus(data.status);
+      setNotice(data.message || "Mensaje de prueba agregado a la cola.");
+      await new Promise((resolve) => window.setTimeout(resolve, 5500));
+      await refreshAdminData();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "No se pudo enviar la prueba de WhatsApp.");
+    }
   }
 
   async function markReceiptSent(payout: ProviderPayout) {
@@ -625,7 +684,7 @@ function App() {
       {view === "cart" && user?.role === "client" && <CartPage cart={cart} total={cartTotal} changeQuantity={changeQuantity} removeFromCart={removeFromCart} checkout={checkout} busy={busy} onContinueShopping={() => setView("catalog")} />}
       {view === "client" && user?.role === "client" && <ClientPanel orders={orders} notifications={notifications} unreadNotifications={unreadNotifications} markNotificationRead={markNotificationRead} copy={copy} />}
       {view === "provider" && user?.role === "provider" && <ProviderPanel orders={orders} deliveries={providerDeliveries} deliver={deliver} busy={busy} />}
-      {view === "admin" && user?.role === "admin" && <AdminPanel dashboard={dashboard} users={users} products={products} orders={orders} pendingDeliveryOrders={pendingDeliveryOrders} pendingPayouts={pendingPayouts} providerConfig={providerConfig} whatsappStatus={whatsappStatus} whatsappQr={whatsappQr} adminLogs={adminLogs} saveProduct={saveProduct} saveProviderConfig={saveProviderConfig} saveAdminNotificationConfig={saveAdminNotificationConfig} connectWhatsApp={connectWhatsApp} retryWhatsAppFailed={retryWhatsAppFailed} disconnectWhatsApp={disconnectWhatsApp} testAdminWhatsApp={testAdminWhatsApp} markReceiptSent={markReceiptSent} previewDeliveryMessage={previewDeliveryMessage} approveParsedDelivery={approveParsedDelivery} saveDeliveryDraft={saveDeliveryDraft} updateStatus={updateStatus} saveOrderEdit={saveOrderEdit} copy={copy} />}
+      {view === "admin" && user?.role === "admin" && <AdminPanel dashboard={dashboard} users={users} products={products} orders={orders} pendingDeliveryOrders={pendingDeliveryOrders} pendingPayouts={pendingPayouts} providerConfig={providerConfig} whatsappStatus={whatsappStatus} whatsappQr={whatsappQr} emailStatus={emailStatus} adminLogs={adminLogs} saveProduct={saveProduct} saveProviderConfig={saveProviderConfig} saveAdminNotificationConfig={saveAdminNotificationConfig} saveEmailConfig={saveEmailConfig} testAdminEmail={testAdminEmail} connectWhatsApp={connectWhatsApp} retryWhatsAppFailed={retryWhatsAppFailed} disconnectWhatsApp={disconnectWhatsApp} testAdminWhatsApp={testAdminWhatsApp} markReceiptSent={markReceiptSent} previewDeliveryMessage={previewDeliveryMessage} approveParsedDelivery={approveParsedDelivery} saveDeliveryDraft={saveDeliveryDraft} updateStatus={updateStatus} saveOrderEdit={saveOrderEdit} copy={copy} />}
 
       <AddedProductModal
         product={selectedAddedProduct}
@@ -1150,7 +1209,7 @@ function OrderWorkCard({ order, deliver, busy }: {
   );
 }
 
-function AdminPanel({ dashboard, users, products, orders, pendingDeliveryOrders, pendingPayouts, providerConfig, whatsappStatus, whatsappQr, adminLogs, saveProduct, saveProviderConfig, saveAdminNotificationConfig, connectWhatsApp, retryWhatsAppFailed, disconnectWhatsApp, testAdminWhatsApp, markReceiptSent, previewDeliveryMessage, approveParsedDelivery, saveDeliveryDraft, updateStatus, saveOrderEdit, copy }: {
+function AdminPanel({ dashboard, users, products, orders, pendingDeliveryOrders, pendingPayouts, providerConfig, whatsappStatus, whatsappQr, emailStatus, adminLogs, saveProduct, saveProviderConfig, saveAdminNotificationConfig, saveEmailConfig, testAdminEmail, connectWhatsApp, retryWhatsAppFailed, disconnectWhatsApp, testAdminWhatsApp, markReceiptSent, previewDeliveryMessage, approveParsedDelivery, saveDeliveryDraft, updateStatus, saveOrderEdit, copy }: {
   dashboard: Dashboard | null;
   users: User[];
   products: Product[];
@@ -1160,10 +1219,13 @@ function AdminPanel({ dashboard, users, products, orders, pendingDeliveryOrders,
   providerConfig: ProviderConfig | null;
   whatsappStatus: WhatsAppBridgeStatus | null;
   whatsappQr: string | null;
+  emailStatus: EmailStatus | null;
   adminLogs: SystemLog[];
   saveProduct: (event: FormEvent<HTMLFormElement>, product?: Product) => void;
   saveProviderConfig: (event: FormEvent<HTMLFormElement>) => void;
   saveAdminNotificationConfig: (event: FormEvent<HTMLFormElement>) => void;
+  saveEmailConfig: (event: FormEvent<HTMLFormElement>) => void;
+  testAdminEmail: () => void;
   connectWhatsApp: () => void;
   retryWhatsAppFailed: () => void;
   disconnectWhatsApp: () => void;
@@ -1520,41 +1582,72 @@ function AdminPanel({ dashboard, users, products, orders, pendingDeliveryOrders,
         )}
         {adminModule === "whatsapp" && (
           <section className="glass-panel provider-config-panel admin-module-panel">
-            <SectionTitle eyebrow="Canal automatico" title="WhatsApp del admin" compact />
+            <SectionTitle eyebrow="Canales automaticos" title="WhatsApp y correo del admin" compact />
             <form className="product-form compact-form" onSubmit={saveAdminNotificationConfig}>
               <input name="admin_notification_phone" placeholder="Numero WhatsApp del admin" defaultValue={providerConfig?.admin_notification_phone || ""} />
               <input name="admin_notification_email" placeholder="Correo respaldo del admin" defaultValue={providerConfig?.admin_notification_email || ""} />
-              <button className="btn-solid">Guardar numero admin</button>
+              <button className="btn-solid">Guardar destinos de avisos</button>
             </form>
-            <div className="dashboard-grid mini-metrics">
-              <Metric label="Bridge" value={whatsappStatus?.enabled ? "Activo" : "Inactivo"} />
-              <Metric label="Sesion" value={whatsappStatus?.connection || "-"} />
-              <Metric label="Numero vinculado" value={whatsappStatus?.connectedNumber || "-"} />
-              <Metric label="Numero avisos" value={providerConfig?.admin_notification_phone || "-"} />
-              <Metric label="Pendientes" value={whatsappStatus?.pending || 0} />
-              <Metric label="Enviados" value={whatsappStatus?.sent || 0} />
-              <Metric label="Fallidos" value={whatsappStatus?.failed || 0} />
+
+            <div className="notification-channel">
+              <h3>WhatsApp Bridge</h3>
+              <div className="dashboard-grid mini-metrics">
+                <Metric label="Bridge" value={whatsappStatus?.enabled ? "Activo" : "Inactivo"} />
+                <Metric label="Sesion" value={whatsappStatus?.connection || "-"} />
+                <Metric label="Numero vinculado" value={whatsappStatus?.connectedNumber || "-"} />
+                <Metric label="Numero avisos" value={providerConfig?.admin_notification_phone || "-"} />
+                <Metric label="Pendientes" value={whatsappStatus?.pending || 0} />
+                <Metric label="Enviados" value={whatsappStatus?.sent || 0} />
+                <Metric label="Fallidos" value={whatsappStatus?.failed || 0} />
+              </div>
+              {adminUsesBridgeNumber && (
+                <div className="warning-list">
+                  <span>El numero vinculado y el numero de avisos son el mismo; WhatsApp normalmente no muestra notificacion push en chats contigo mismo.</span>
+                  <span>Usa otro numero como destino o conserva el correo de respaldo activo.</span>
+                </div>
+              )}
+              {whatsappQr ? (
+                <div className="qr-panel">
+                  <img src={whatsappQr} alt="QR de WhatsApp Bridge" />
+                  <p className="hint">Escanea el QR desde WhatsApp, Dispositivos vinculados.</p>
+                </div>
+              ) : (
+                <p className="hint">{whatsappStatus?.qrPending ? "Generando QR..." : "Inicia la vinculacion para generar un QR o restaurar la sesion guardada."}</p>
+              )}
+              {whatsappStatus?.lastError && <p className="error-text">{whatsappStatus.lastError}</p>}
+              <div className="status-actions">
+                {whatsappStatus?.connection !== "connected" && <button className="btn-solid" onClick={connectWhatsApp}>Iniciar vinculacion</button>}
+                <button onClick={retryWhatsAppFailed}>Reintentar fallidos</button>
+                <button onClick={disconnectWhatsApp}>Desconectar sesion</button>
+                <button onClick={testAdminWhatsApp} disabled={whatsappStatus?.connection !== "connected"}>Enviar prueba WhatsApp</button>
+              </div>
             </div>
-            {adminUsesBridgeNumber && (
-              <div className="warning-list">
-                <span>El WhatsApp vinculado y el numero de avisos son el mismo. WhatsApp envia el mensaje, pero normalmente no muestra notificacion push en chats contigo mismo.</span>
-                <span>Para recibir notificaciones reales, vincula el Bridge con otro numero o configura aqui otro numero destino. Mientras tanto, el sistema tambien enviara respaldo por correo si esta configurado.</span>
+
+            <div className="notification-channel">
+              <h3>Correo de respaldo</h3>
+              <form className="product-form smtp-form" onSubmit={saveEmailConfig}>
+                <input name="smtp_host" placeholder="Servidor SMTP" defaultValue={emailStatus?.host || "smtp.gmail.com"} required />
+                <input name="smtp_port" type="number" min="1" max="65535" placeholder="Puerto" defaultValue={emailStatus?.port || 465} required />
+                <select name="smtp_secure" defaultValue={String(emailStatus?.configured ? emailStatus.secure : true)}>
+                  <option value="true">Conexion segura SSL (465)</option>
+                  <option value="false">STARTTLS (587)</option>
+                </select>
+                <input name="smtp_user" type="email" placeholder="Usuario SMTP" defaultValue={emailStatus?.user || providerConfig?.admin_notification_email || ""} />
+                <input name="smtp_password" type="password" autoComplete="new-password" placeholder={emailStatus?.passwordConfigured ? "Contrasena guardada; deja vacio para conservar" : "Contrasena de aplicacion"} />
+                <input name="smtp_from" placeholder="Remitente" defaultValue={emailStatus?.from || providerConfig?.admin_notification_email || ""} required />
+                <button className="btn-solid">Guardar configuracion SMTP</button>
+              </form>
+              <div className="dashboard-grid mini-metrics email-metrics">
+                <Metric label="Configuracion" value={emailStatus?.configured ? "Lista" : "Pendiente"} />
+                <Metric label="Credencial" value={emailStatus?.passwordConfigured ? "Guardada" : "Falta"} />
+                <Metric label="Destino" value={emailStatus?.recipient || "-"} />
+                <Metric label="Ultima prueba" value={emailStatus?.lastTestStatus || "Sin probar"} />
               </div>
-            )}
-            {whatsappQr ? (
-              <div className="qr-panel">
-                <img src={whatsappQr} alt="QR de WhatsApp Bridge" />
-                <p className="hint">Escanea este QR con el numero empresarial interno. La sesion debe guardarse en un volumen persistente.</p>
+              {emailStatus?.lastTestAt && <p className="hint">Ultima comprobacion: {formatDateTime(emailStatus.lastTestAt)}</p>}
+              {emailStatus?.lastError && <p className="error-text">{emailStatus.lastError}</p>}
+              <div className="status-actions">
+                <button className="btn-solid" onClick={testAdminEmail} disabled={!emailStatus?.configured}>Enviar correo de prueba</button>
               </div>
-            ) : (
-              <p className="hint">{whatsappStatus?.qrPending ? "QR pendiente de generacion." : "No hay QR pendiente. Si la sesion esta conectada, el bridge enviara avisos automaticamente."}</p>
-            )}
-            {whatsappStatus?.lastError && <p className="error-text">{whatsappStatus.lastError}</p>}
-            <div className="status-actions">
-              {whatsappStatus?.connection !== "connected" && <button className="btn-solid" onClick={connectWhatsApp}>Iniciar vinculacion</button>}
-              <button onClick={retryWhatsAppFailed}>Reintentar fallidos</button>
-              <button onClick={disconnectWhatsApp}>Desconectar sesion</button>
-              <button onClick={testAdminWhatsApp} disabled={whatsappStatus?.connection !== "connected"}>Probar envio</button>
             </div>
           </section>
         )}

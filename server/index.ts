@@ -22,7 +22,8 @@ import type { ParsedAccountMessage, ParsedDeliveryAccount } from './services/inb
 import type { WhatsAppInboundPayload } from './services/whatsappBridge/types.js';
 import { parseDeliveryMessage } from './services/deliveryParser/index.js';
 import type { DeliveryParserItem } from './services/deliveryParser/index.js';
-import { sendAdminOrderNotificationEmail } from './services/email/index.js';
+import { sendAdminOrderNotificationEmail, sendSmtpEmail, verifySmtpConnection } from './services/email/index.js';
+import type { SmtpConfig } from './services/email/index.js';
 
 const prisma = new PrismaClient();
 const app = express();
@@ -616,6 +617,49 @@ async function getAdminNotificationEmail() {
   return getSettingValue('admin_notification_email', process.env.ADMIN_NOTIFICATION_EMAIL || '');
 }
 
+function settingBoolean(value: string | undefined, fallback: boolean) {
+  if (value === undefined || value === '') return fallback;
+  return value.trim().toLowerCase() === 'true';
+}
+
+async function getSmtpConfig(): Promise<SmtpConfig & { source: 'database' | 'environment'; passwordConfigured: boolean }> {
+  const settings = await getSettingMap();
+  const databaseConfigured = Boolean(settings.get('smtp_host') || settings.get('smtp_from') || settings.get('smtp_user'));
+  const port = Number(settings.get('smtp_port') || process.env.SMTP_PORT || 587);
+  const encryptedPassword = settings.get('smtp_pass_encrypted');
+  const savedPassword = encryptedPassword ? decryptSecret(encryptedPassword) : '';
+  const password = savedPassword && savedPassword !== '***' ? savedPassword : process.env.SMTP_PASS || '';
+
+  return {
+    host: settings.get('smtp_host') || process.env.SMTP_HOST || '',
+    port,
+    secure: settingBoolean(settings.get('smtp_secure') || process.env.SMTP_SECURE, port === 465),
+    user: settings.get('smtp_user') || process.env.SMTP_USER || '',
+    pass: password,
+    from: settings.get('smtp_from') || process.env.SMTP_FROM || process.env.SMTP_USER || '',
+    source: databaseConfigured ? 'database' : 'environment',
+    passwordConfigured: Boolean(password)
+  };
+}
+
+async function getEmailStatus() {
+  const config = await getSmtpConfig();
+  return {
+    configured: Boolean(config.host && config.from),
+    source: config.source,
+    host: config.host,
+    port: config.port,
+    secure: config.secure,
+    user: config.user || '',
+    from: config.from,
+    passwordConfigured: config.passwordConfigured,
+    recipient: await getAdminNotificationEmail(),
+    lastTestStatus: await getSettingValue('smtp_last_test_status'),
+    lastTestAt: await getSettingValue('smtp_last_test_at'),
+    lastError: await getSettingValue('smtp_last_test_error')
+  };
+}
+
 function isServimilUser(user: { name?: string | null; email?: string | null }) {
   return user.name?.toLowerCase().includes('servimil') || user.email === 'cliente@centrodigital.local';
 }
@@ -680,7 +724,7 @@ async function notifyAdminPaymentPending(order: any, payout: any) {
 
 async function notifyAdminPaymentByEmail(order: any, payout: any, channel = 'email') {
   try {
-    await sendAdminOrderNotificationEmail(order, payout, money, formatDateTimeCO, await getAdminNotificationEmail());
+    await sendAdminOrderNotificationEmail(order, payout, money, formatDateTimeCO, await getAdminNotificationEmail(), await getSmtpConfig());
     await prisma.order.update({ where: { id: order.id }, data: { admin_notified_at: new Date(), admin_notification_channel: 'email' } });
     await addMovement('admin.payment_notification_email_sent', `Correo enviado al admin para orden ${order.order_number}.`, order.user_id, order.id);
     return channel;
@@ -1652,7 +1696,7 @@ app.patch('/api/admin/admin-notification-config', sensitiveLimiter, requireAuth,
   try {
     const input = z.object({
       admin_notification_phone: z.string().optional(),
-      admin_notification_email: z.string().optional()
+      admin_notification_email: z.union([z.string().email(), z.literal('')]).optional()
     }).parse(req.body);
     await upsertSetting('admin_notification_phone', input.admin_notification_phone || '');
     await upsertSetting('admin_notification_email', input.admin_notification_email || '');
@@ -1661,6 +1705,82 @@ app.patch('/api/admin/admin-notification-config', sensitiveLimiter, requireAuth,
       admin_notification_phone: input.admin_notification_phone || '',
       admin_notification_email: input.admin_notification_email || ''
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+const smtpConfigSchema = z.object({
+  host: z.string().trim().min(3),
+  port: z.coerce.number().int().min(1).max(65535),
+  secure: z.boolean(),
+  user: z.string().trim().optional(),
+  password: z.string().optional(),
+  from: z.string().trim().min(3)
+});
+
+app.get('/api/admin/email/status', sensitiveLimiter, requireAuth, requireRole('admin'), async (_req, res, next) => {
+  try {
+    res.json({ status: await getEmailStatus() });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.patch('/api/admin/email/config', sensitiveLimiter, requireAuth, requireRole('admin'), async (req, res, next) => {
+  try {
+    const input = smtpConfigSchema.parse(req.body);
+    const updates = [
+      upsertSetting('smtp_host', input.host),
+      upsertSetting('smtp_port', String(input.port)),
+      upsertSetting('smtp_secure', String(input.secure)),
+      upsertSetting('smtp_user', input.user || ''),
+      upsertSetting('smtp_from', input.from)
+    ];
+    if (input.password?.trim()) {
+      updates.push(upsertSetting('smtp_pass_encrypted', encryptSecret(input.password.trim()) || ''));
+    }
+    await Promise.all(updates);
+    await upsertSetting('smtp_last_test_status', 'pending');
+    await upsertSetting('smtp_last_test_error', '');
+    await addMovement('email.config_updated', 'Admin actualizo la configuracion SMTP cifrada.', req.user!.id);
+    res.json({ status: await getEmailStatus() });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/admin/email/test', sensitiveLimiter, requireAuth, requireRole('admin'), async (req, res, next) => {
+  try {
+    const recipient = await getAdminNotificationEmail();
+    if (!recipient) return res.status(400).json({ message: 'Configura primero el correo de avisos del admin.' });
+    const config = await getSmtpConfig();
+    if (!config.host || !config.from) return res.status(400).json({ message: 'Completa primero la configuracion SMTP.' });
+
+    try {
+      await verifySmtpConnection(config);
+      await sendSmtpEmail({
+        to: recipient,
+        subject: 'Prueba de correo - Centro Digital',
+        text: `La vinculacion de correo funciona correctamente.\n\nFecha: ${formatDateTimeCO(new Date())}`
+      }, config);
+      await Promise.all([
+        upsertSetting('smtp_last_test_status', 'sent'),
+        upsertSetting('smtp_last_test_at', new Date().toISOString()),
+        upsertSetting('smtp_last_test_error', '')
+      ]);
+      await addMovement('email.test_sent', `Correo de prueba enviado a ${recipient}.`, req.user!.id);
+      return res.json({ status: await getEmailStatus(), message: 'Correo de prueba enviado correctamente.' });
+    } catch (error) {
+      const safeMessage = error instanceof Error ? error.message.replace(/[\r\n]+/g, ' ').slice(0, 180) : 'Error SMTP desconocido';
+      await Promise.all([
+        upsertSetting('smtp_last_test_status', 'failed'),
+        upsertSetting('smtp_last_test_at', new Date().toISOString()),
+        upsertSetting('smtp_last_test_error', safeMessage)
+      ]);
+      await addMovement('email.test_failed', `Fallo la prueba SMTP: ${safeMessage}.`, req.user!.id);
+      return res.status(502).json({ message: `No se pudo enviar el correo: ${safeMessage}`, status: await getEmailStatus() });
+    }
   } catch (error) {
     next(error);
   }

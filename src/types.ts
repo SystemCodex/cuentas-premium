@@ -298,3 +298,18 @@ export type WhatsAppBridgeStatus = {
   sent: number;
   failed: number;
 };
+
+export type EmailStatus = {
+  configured: boolean;
+  source: "database" | "environment";
+  host: string;
+  port: number;
+  secure: boolean;
+  user: string;
+  from: string;
+  passwordConfigured: boolean;
+  recipient: string;
+  lastTestStatus?: "pending" | "sent" | "failed" | "";
+  lastTestAt?: string;
+  lastError?: string;
+};

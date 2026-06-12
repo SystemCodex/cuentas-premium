@@ -192,12 +192,15 @@ Variables backend:
 ADMIN_NOTIFICATION_EMAIL=""
 SMTP_HOST=""
 SMTP_PORT=""
+SMTP_SECURE=""
 SMTP_USER=""
 SMTP_PASS=""
 SMTP_FROM=""
 ```
 
-`ADMIN_NOTIFICATION_EMAIL` puede configurarse desde el panel admin. `SMTP_HOST` y `SMTP_FROM` siempre deben existir en variables backend para que el correo pueda salir.
+`ADMIN_NOTIFICATION_EMAIL` y SMTP pueden configurarse desde el panel admin. La contraseña SMTP se cifra con `APP_ENCRYPTION_KEY` antes de guardarse en `AppSetting` y nunca se devuelve al navegador. También se pueden usar variables backend; la configuración guardada desde admin tiene prioridad.
+
+Para Gmail usa `smtp.gmail.com`, puerto `465`, conexión segura y una contraseña de aplicación de Google. La contraseña normal de Gmail no funciona.
 
 Si WhatsApp y correo fallan, el pedido no falla y sigue visible en el panel admin.
 
@@ -310,6 +313,7 @@ ADMIN_NOTIFICATION_PHONE=""
 ADMIN_NOTIFICATION_EMAIL=""
 SMTP_HOST=""
 SMTP_PORT=""
+SMTP_SECURE=""
 SMTP_USER=""
 SMTP_PASS=""
 SMTP_FROM=""

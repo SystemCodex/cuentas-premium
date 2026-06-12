@@ -8,6 +8,7 @@ let lastError = null;
 let initStarted = false;
 let inboundHandler = null;
 let connectedNumber = null;
+let nextInitializationAt = 0;
 let runtimeEnabled = (() => {
     const value = process.env.WHATSAPP_BRIDGE_ENABLED?.trim().toLowerCase();
     return value !== 'false' && value !== '0' && value !== 'off';
@@ -17,6 +18,9 @@ function isEnabled() {
 }
 function sanitizeError(error) {
     return error instanceof Error ? error.message.slice(0, 220) : 'Error desconocido';
+}
+function browserRetryDelayMs() {
+    return Number(process.env.WHATSAPP_BROWSER_RETRY_SECONDS || 120) * 1000;
 }
 function normalizeRecipientNumber(recipient) {
     const digits = recipient.replace(/[^\d]/g, '');
@@ -39,6 +43,7 @@ export function setWhatsAppInboundHandler(handler) {
 }
 export function enableWhatsAppWebClient() {
     runtimeEnabled = true;
+    nextInitializationAt = 0;
     if (connection === 'disabled')
         connection = 'disconnected';
 }
@@ -51,6 +56,8 @@ export async function initializeWhatsAppWebClient() {
         connection = 'disabled';
         return;
     }
+    if (Date.now() < nextInitializationAt)
+        return;
     if (initStarted || client)
         return;
     initStarted = true;
@@ -88,6 +95,7 @@ export async function initializeWhatsAppWebClient() {
             qrCodeDataUrl = null;
             connection = 'connected';
             connectedNumber = normalizeOptionalNumber(client.info?.wid?.user || client.info?.wid?._serialized);
+            nextInitializationAt = 0;
             lastError = null;
         });
         client.on('authenticated', () => {
@@ -104,6 +112,7 @@ export async function initializeWhatsAppWebClient() {
             lastError = String(reason).slice(0, 220);
             client = null;
             initStarted = false;
+            nextInitializationAt = Date.now() + browserRetryDelayMs();
         });
         client.on('message', async (message) => {
             if (!inboundHandler || process.env.WHATSAPP_INBOUND_ENABLED !== 'true')
@@ -133,6 +142,7 @@ export async function initializeWhatsAppWebClient() {
         lastError = sanitizeError(error);
         client = null;
         initStarted = false;
+        nextInitializationAt = Date.now() + browserRetryDelayMs();
     }
 }
 export async function sendWhatsAppWebMessage(recipient, message) {
@@ -159,6 +169,7 @@ export async function disconnectWhatsAppWebClient() {
         initStarted = false;
         qrCodeDataUrl = null;
         connectedNumber = null;
+        nextInitializationAt = 0;
         connection = isEnabled() ? 'disconnected' : 'disabled';
     }
 }

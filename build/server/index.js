@@ -2026,8 +2026,8 @@ app.listen(port, '0.0.0.0', () => {
     console.log(`API lista en http://localhost:${port}`);
     void (async () => {
         const adminEnabled = await getSettingValue('whatsapp_bridge_admin_enabled');
-        const shouldStart = adminEnabled === 'true' ||
-            (adminEnabled !== 'false' && process.env.WHATSAPP_BRIDGE_AUTOSTART?.trim().toLowerCase() === 'true');
+        const shouldStart = adminEnabled !== 'false' &&
+            process.env.WHATSAPP_BRIDGE_AUTOSTART?.trim().toLowerCase() === 'true';
         if (!shouldStart) {
             console.log('WhatsApp Bridge autostart desactivado; el panel interno permanece disponible.');
             return;

@@ -10,6 +10,7 @@ let lastError: string | null = null;
 let initStarted = false;
 let inboundHandler: WhatsAppInboundHandler | null = null;
 let connectedNumber: string | null = null;
+let nextInitializationAt = 0;
 let runtimeEnabled = (() => {
   const value = process.env.WHATSAPP_BRIDGE_ENABLED?.trim().toLowerCase();
   return value !== 'false' && value !== '0' && value !== 'off';
@@ -21,6 +22,10 @@ function isEnabled() {
 
 function sanitizeError(error: unknown) {
   return error instanceof Error ? error.message.slice(0, 220) : 'Error desconocido';
+}
+
+function browserRetryDelayMs() {
+  return Number(process.env.WHATSAPP_BROWSER_RETRY_SECONDS || 120) * 1000;
 }
 
 function normalizeRecipientNumber(recipient: string) {
@@ -43,6 +48,7 @@ export function setWhatsAppInboundHandler(handler: WhatsAppInboundHandler | null
 
 export function enableWhatsAppWebClient() {
   runtimeEnabled = true;
+  nextInitializationAt = 0;
   if (connection === 'disabled') connection = 'disconnected';
 }
 
@@ -56,6 +62,7 @@ export async function initializeWhatsAppWebClient() {
     connection = 'disabled';
     return;
   }
+  if (Date.now() < nextInitializationAt) return;
   if (initStarted || client) return;
   initStarted = true;
   connection = 'connecting';
@@ -96,6 +103,7 @@ export async function initializeWhatsAppWebClient() {
       qrCodeDataUrl = null;
       connection = 'connected';
       connectedNumber = normalizeOptionalNumber(client.info?.wid?.user || client.info?.wid?._serialized);
+      nextInitializationAt = 0;
       lastError = null;
     });
 
@@ -115,6 +123,7 @@ export async function initializeWhatsAppWebClient() {
       lastError = String(reason).slice(0, 220);
       client = null;
       initStarted = false;
+      nextInitializationAt = Date.now() + browserRetryDelayMs();
     });
 
     client.on('message', async (message: any) => {
@@ -142,6 +151,7 @@ export async function initializeWhatsAppWebClient() {
     lastError = sanitizeError(error);
     client = null;
     initStarted = false;
+    nextInitializationAt = Date.now() + browserRetryDelayMs();
   }
 }
 
@@ -167,6 +177,7 @@ export async function disconnectWhatsAppWebClient() {
     initStarted = false;
     qrCodeDataUrl = null;
     connectedNumber = null;
+    nextInitializationAt = 0;
     connection = isEnabled() ? 'disconnected' : 'disabled';
   }
 }

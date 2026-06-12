@@ -1599,6 +1599,7 @@ function AdminPanel({ dashboard, users, products, orders, pendingDeliveryOrders,
                 <Metric label="Pendientes" value={whatsappStatus?.pending || 0} />
                 <Metric label="Enviados" value={whatsappStatus?.sent || 0} />
                 <Metric label="Fallidos" value={whatsappStatus?.failed || 0} />
+                <Metric label="Respaldo correo" value={whatsappStatus?.emailFallback || 0} />
               </div>
               {adminUsesBridgeNumber && (
                 <div className="warning-list">

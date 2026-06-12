@@ -156,12 +156,14 @@ export async function initializeWhatsAppWebClient() {
         await client.initialize();
     }
     catch (error) {
+        const failedClient = client;
         connection = 'disconnected';
         connectedNumber = null;
         lastError = sanitizeError(error);
         client = null;
         initStarted = false;
-        nextInitializationAt = Date.now() + browserRetryDelayMs();
+        nextInitializationAt = Number.POSITIVE_INFINITY;
+        await failedClient?.destroy?.().catch(() => null);
     }
 }
 export async function sendWhatsAppWebMessage(recipient, message) {

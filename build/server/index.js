@@ -12,7 +12,7 @@ import { z } from 'zod';
 import { disconnectWhatsAppBridge, enableWhatsAppBridge, getWhatsAppBridgeQr, getWhatsAppBridgeStatus, queueWhatsAppNotification, retryFailedWhatsAppOutbox, startWhatsAppBridgeWorker } from './services/whatsappBridge/index.js';
 import { parseAccountMessage, serviceKeyFromText } from './services/inboundDeliveryParser/index.js';
 import { parseDeliveryMessage } from './services/deliveryParser/index.js';
-import { sendAdminOrderNotificationEmail, sendSmtpEmail, verifySmtpConnection } from './services/email/index.js';
+import { emailConfigured, sendAdminOrderNotificationEmail, sendSmtpEmail, verifySmtpConnection } from './services/email/index.js';
 function configureRuntimeDatabaseUrl() {
     const raw = process.env.DATABASE_URL;
     const usePooler = process.env.DATABASE_USE_POOLER?.trim().toLowerCase() !== 'false';
@@ -605,7 +605,7 @@ async function getSmtpConfig() {
 async function getEmailStatus() {
     const config = await getSmtpConfig();
     return {
-        configured: Boolean(config.host && config.from),
+        configured: emailConfigured(config),
         source: config.source,
         host: config.host,
         port: config.port,
@@ -1712,8 +1712,13 @@ app.post('/api/admin/email/test', sensitiveLimiter, requireAuth, requireRole('ad
         if (!recipient)
             return res.status(400).json({ message: 'Configura primero el correo de avisos del admin.' });
         const config = await getSmtpConfig();
-        if (!config.host || !config.from)
-            return res.status(400).json({ message: 'Completa primero la configuracion SMTP.' });
+        if (!emailConfigured(config)) {
+            return res.status(400).json({
+                message: config.user && !config.pass
+                    ? 'Guarda primero la contrasena de aplicacion del correo.'
+                    : 'Completa primero la configuracion SMTP.'
+            });
+        }
         try {
             await verifySmtpConnection(config);
             await sendSmtpEmail({

@@ -23,7 +23,7 @@ import type { ParsedAccountMessage, ParsedDeliveryAccount } from './services/inb
 import type { WhatsAppInboundPayload, WhatsAppOutboxFallbackResult } from './services/whatsappBridge/types.js';
 import { parseDeliveryMessage } from './services/deliveryParser/index.js';
 import type { DeliveryParserItem } from './services/deliveryParser/index.js';
-import { sendAdminOrderNotificationEmail, sendSmtpEmail, verifySmtpConnection } from './services/email/index.js';
+import { emailConfigured, sendAdminOrderNotificationEmail, sendSmtpEmail, verifySmtpConnection } from './services/email/index.js';
 import type { SmtpConfig } from './services/email/index.js';
 
 function configureRuntimeDatabaseUrl() {
@@ -671,7 +671,7 @@ async function getSmtpConfig(): Promise<SmtpConfig & { source: 'database' | 'env
 async function getEmailStatus() {
   const config = await getSmtpConfig();
   return {
-    configured: Boolean(config.host && config.from),
+    configured: emailConfigured(config),
     source: config.source,
     host: config.host,
     port: config.port,
@@ -1833,7 +1833,13 @@ app.post('/api/admin/email/test', sensitiveLimiter, requireAuth, requireRole('ad
     const recipient = await getAdminNotificationEmail();
     if (!recipient) return res.status(400).json({ message: 'Configura primero el correo de avisos del admin.' });
     const config = await getSmtpConfig();
-    if (!config.host || !config.from) return res.status(400).json({ message: 'Completa primero la configuracion SMTP.' });
+    if (!emailConfigured(config)) {
+      return res.status(400).json({
+        message: config.user && !config.pass
+          ? 'Guarda primero la contrasena de aplicacion del correo.'
+          : 'Completa primero la configuracion SMTP.'
+      });
+    }
 
     try {
       await verifySmtpConnection(config);

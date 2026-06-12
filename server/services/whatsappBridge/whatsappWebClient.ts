@@ -21,7 +21,14 @@ function isEnabled() {
 }
 
 function sanitizeError(error: unknown) {
-  return error instanceof Error ? error.message.slice(0, 220) : 'Error desconocido';
+  if (!(error instanceof Error)) return 'Error desconocido';
+  const nodeError = error as NodeJS.ErrnoException;
+  const details = [
+    nodeError.code,
+    nodeError.syscall,
+    nodeError.path ? path.basename(nodeError.path) : undefined
+  ].filter(Boolean);
+  return `${error.message}${details.length ? ` [${details.join(' | ')}]` : ''}`.slice(0, 220);
 }
 
 function browserRetryDelayMs() {

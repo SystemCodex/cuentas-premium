@@ -55,6 +55,7 @@ export async function initializeWhatsAppWebClient() {
     initStarted = true;
     connection = 'connecting';
     try {
+        process.env.PUPPETEER_CACHE_DIR ||= path.resolve('.cache', 'puppeteer');
         const whatsapp = await import('whatsapp-web.js');
         const whatsappWeb = whatsapp.default || whatsapp;
         const { Client, LocalAuth } = whatsappWeb;

@@ -332,6 +332,8 @@ La primera vinculacion se realiza desde `Admin > WhatsApp admin > Iniciar vincul
 Escanea el QR con `WhatsApp > Dispositivos vinculados > Vincular dispositivo`.
 En produccion, `WHATSAPP_SESSION_PATH` debe apuntar a almacenamiento persistente para
 que la sesion no se pierda al reiniciar o volver a desplegar la aplicacion.
+El comando de compilacion instala Chrome en `.cache/puppeteer`, dentro del proyecto,
+para que `whatsapp-web.js` pueda iniciar en Hostinger.
 
 Frontend:
 

@@ -11,6 +11,7 @@ node_modules/
 # WhatsApp Web session and browser cache
 .whatsapp-session/
 .wwebjs_cache/
+.cache/puppeteer/
 
 # Runtime files
 logs/

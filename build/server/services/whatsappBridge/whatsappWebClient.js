@@ -22,6 +22,16 @@ function sanitizeError(error) {
 function browserRetryDelayMs() {
     return Number(process.env.WHATSAPP_BROWSER_RETRY_SECONDS || 120) * 1000;
 }
+async function clearStaleBrowserLocks(sessionPath) {
+    const profilePath = path.join(path.resolve(sessionPath), 'session');
+    const lockNames = [
+        'SingletonLock',
+        'SingletonSocket',
+        'SingletonCookie',
+        'DevToolsActivePort'
+    ];
+    await Promise.all(lockNames.map((name) => fs.rm(path.join(profilePath, name), { force: true, recursive: true }).catch(() => undefined)));
+}
 function normalizeRecipientNumber(recipient) {
     const digits = recipient.replace(/[^\d]/g, '');
     if (!digits)
@@ -72,6 +82,7 @@ export async function initializeWhatsAppWebClient() {
         const whatsappWeb = whatsapp.default || whatsapp;
         const { Client, LocalAuth } = whatsappWeb;
         const sessionPath = process.env.WHATSAPP_SESSION_PATH || './.whatsapp-session';
+        await clearStaleBrowserLocks(sessionPath);
         client = new Client({
             authStrategy: new LocalAuth({ dataPath: path.resolve(sessionPath) }),
             puppeteer: {

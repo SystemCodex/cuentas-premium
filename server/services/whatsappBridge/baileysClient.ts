@@ -118,7 +118,7 @@ export async function initializeWhatsAppClient(prisma: PrismaClient) {
     const currentSocket = makeWASocket({
       auth: auth.state,
       logger,
-      browser: Browsers.ubuntu('Centro Digital'),
+      browser: Browsers.windows('Centro Digital'),
       markOnlineOnConnect: false,
       syncFullHistory: false,
       shouldSyncHistoryMessage: () => false,

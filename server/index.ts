@@ -116,6 +116,36 @@ const authLimiter = rateLimit({
   }
 });
 
+type LoginAttempt = { count: number; resetAt: number };
+const failedLoginAttempts = new Map<string, LoginAttempt>();
+const loginAttemptWindowMs = 5 * 60 * 1000;
+const loginAttemptLimit = 12;
+
+function loginAttemptKey(req: Request, accessCode: string) {
+  const codeKey = crypto.createHash('sha256').update(accessCode).digest('hex').slice(0, 16);
+  return `${ipKeyGenerator(req.ip || 'unknown')}:${codeKey}`;
+}
+
+function activeLoginAttempt(key: string) {
+  const attempt = failedLoginAttempts.get(key);
+  if (!attempt) return null;
+  if (attempt.resetAt <= Date.now()) {
+    failedLoginAttempts.delete(key);
+    return null;
+  }
+  return attempt;
+}
+
+function recordFailedLogin(key: string) {
+  const current = activeLoginAttempt(key);
+  const next = {
+    count: (current?.count || 0) + 1,
+    resetAt: current?.resetAt || Date.now() + loginAttemptWindowMs
+  };
+  failedLoginAttempts.set(key, next);
+  return next;
+}
+
 const sensitiveLimiter = rateLimit({
   windowMs: 60 * 1000,
   limit: 60,
@@ -618,6 +648,8 @@ function buildAdminPaymentPendingMessage(order: any, payout: any) {
     `Total venta cliente: ${money(order.sale_total || order.total)}`,
     `Valor a pagar proveedor: ${money(order.provider_total)}`,
     `Utilidad estimada: ${money(order.profit_total)}`,
+    `Metodo de pago proveedor: ${payout.destination_type || payout.method || 'No configurado'}`,
+    `Numero destino proveedor: ${payout.destination_phone || 'No configurado'}`,
     '',
     'Cuando recibas las cuentas del proveedor:',
     '1. Entra a Admin > Procesar cuentas entregadas.',
@@ -713,16 +745,6 @@ function isPendingDeliveryStatus(status: string) {
 
 function normalizeOrderNumberInput(value?: string | null) {
   return value?.trim().toUpperCase() || undefined;
-}
-
-async function getProviderPaymentConfig(providerId?: string | null) {
-  return prisma.providerPaymentConfig.findFirst({
-    where: {
-      active: true,
-      OR: [{ provider_id: providerId || undefined }, { provider_id: null }]
-    },
-    orderBy: [{ provider_id: 'desc' }, { updated_at: 'desc' }]
-  });
 }
 
 async function getAnyProviderPaymentConfig(providerId?: string | null) {
@@ -857,13 +879,24 @@ app.post('/api/auth/register', authLimiter, (_req, res) => {
   return res.status(410).json({ message: 'Registro publico desactivado. Cada usuario debe tener un codigo asignado por administracion.' });
 });
 
-app.post('/api/auth/login', authLimiter, async (req, res, next) => {
+app.post('/api/auth/login', async (req, res, next) => {
   try {
     const input = codeLoginSchema.parse(req.body);
+    const attemptKey = loginAttemptKey(req, input.access_code);
+    const currentAttempt = activeLoginAttempt(attemptKey);
+    if (currentAttempt && currentAttempt.count >= loginAttemptLimit) {
+      const retrySeconds = Math.max(1, Math.ceil((currentAttempt.resetAt - Date.now()) / 1000));
+      res.setHeader('Retry-After', retrySeconds);
+      return res.status(429).json({
+        message: `Demasiados intentos fallidos. Intenta nuevamente en ${Math.ceil(retrySeconds / 60)} minuto(s).`
+      });
+    }
     const user = await prisma.user.findUnique({ where: { access_code: input.access_code } });
     if (!user) {
+      recordFailedLogin(attemptKey);
       return res.status(401).json({ message: 'Codigo incorrecto.' });
     }
+    failedLoginAttempts.delete(attemptKey);
     const authUser = publicUser(user);
     const token = signToken(authUser);
     res.json({ token, user: authUser });
@@ -958,8 +991,9 @@ app.post('/api/orders', sensitiveLimiter, requireAuth, requireRole('client'), as
     if (products.length !== productIds.length) return res.status(400).json({ message: 'Hay productos invalidos o inactivos.' });
 
     const provider = await prisma.user.findFirst({ where: { role: 'provider' }, orderBy: { created_at: 'asc' } });
-    const providerPaymentConfig = await getProviderPaymentConfig(provider?.id);
-    if (!providerPaymentConfig) return res.status(400).json({ message: 'No hay una configuracion activa de pago al proveedor.' });
+    const providerPaymentConfig = await getAnyProviderPaymentConfig(provider?.id);
+    const providerPaymentMethod = providerPaymentConfig?.method || 'manual';
+    const providerPaymentPhone = providerPaymentConfig?.phone || '';
     const productMap = new Map(products.map((product) => [product.id, product]));
     const orderItems = input.items.map((item) => {
       const product = productMap.get(item.productId)!;
@@ -1008,12 +1042,12 @@ app.post('/api/orders', sensitiveLimiter, requireAuth, requireRole('client'), as
           provider_id: provider?.id,
           amount: providerTotal,
           currency: 'COP',
-          method: providerPaymentConfig.method,
+          method: providerPaymentMethod,
           status: 'pending_admin_payment',
           reference: `payout_${order.id}`,
-          destination_type: providerPaymentConfig.method,
-          destination_phone: providerPaymentConfig.phone,
-          destination_document: providerPaymentConfig.document
+          destination_type: providerPaymentMethod,
+          destination_phone: providerPaymentPhone,
+          destination_document: providerPaymentConfig?.document || null
         }
       });
 

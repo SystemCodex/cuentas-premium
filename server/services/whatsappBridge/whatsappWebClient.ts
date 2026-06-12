@@ -1,4 +1,5 @@
 import path from 'node:path';
+import fs from 'node:fs/promises';
 import QRCode from 'qrcode';
 import type { WhatsAppBridgeConnection, WhatsAppInboundHandler } from './types.js';
 
@@ -61,17 +62,20 @@ export async function initializeWhatsAppWebClient() {
 
   try {
     process.env.PUPPETEER_CACHE_DIR ||= path.resolve('.cache', 'puppeteer');
+    const puppeteerModule = await import('puppeteer');
+    const puppeteer = (puppeteerModule as any).default || puppeteerModule;
+    const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH?.trim() || puppeteer.executablePath();
+    await fs.chmod(executablePath, 0o755);
     const whatsapp = await import('whatsapp-web.js');
     const whatsappWeb = (whatsapp as any).default || whatsapp;
     const { Client, LocalAuth } = whatsappWeb;
     const sessionPath = process.env.WHATSAPP_SESSION_PATH || './.whatsapp-session';
-    const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH?.trim();
 
     client = new Client({
       authStrategy: new LocalAuth({ dataPath: path.resolve(sessionPath) }),
       puppeteer: {
         headless: true,
-        ...(executablePath ? { executablePath } : {}),
+        executablePath,
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',

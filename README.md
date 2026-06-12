@@ -186,6 +186,10 @@ El bridge no debe enviar credenciales al cliente. Las credenciales solo se ven d
 
 WhatsApp Bridge es el canal principal. El correo se envia como respaldo si WhatsApp no esta disponible, esta desactivado/desconectado al crear el pedido, el destino es el mismo numero vinculado o el mensaje agota sus intentos y queda fallido. El numero del WhatsApp del admin se guarda desde el panel admin en "WhatsApp del admin"; desde la seccion del bridge se puede ver estado, QR, pendientes/fallidos, reintentar, reconectar y enviar un mensaje de prueba.
 
+Si el mensaje permanece pendiente aunque el bridge figure conectado, el worker activa el correo
+automáticamente después del límite `WHATSAPP_EMAIL_FALLBACK_SECONDS` (60 segundos por defecto).
+El pedido se notifica una sola vez por respaldo y el panel muestra el contador `Respaldo correo`.
+
 Variables backend:
 
 ```env

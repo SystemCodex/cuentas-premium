@@ -43,7 +43,15 @@ export async function startWhatsAppBridgeWorker(prisma, addMovement, inboundHand
     await initializeWhatsAppClient(prisma);
 }
 function windowlessInterval(task, ms) {
+    let running = false;
     setInterval(() => {
-        task().catch(() => null);
+        if (running)
+            return;
+        running = true;
+        task()
+            .catch(() => null)
+            .finally(() => {
+            running = false;
+        });
     }, ms);
 }

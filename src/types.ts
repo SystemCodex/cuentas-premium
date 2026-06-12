@@ -297,6 +297,7 @@ export type WhatsAppBridgeStatus = {
   pending: number;
   sent: number;
   failed: number;
+  emailFallback: number;
 };
 
 export type EmailStatus = {

@@ -20,7 +20,7 @@ import {
 } from './services/whatsappBridge/index.js';
 import { parseAccountMessage, serviceKeyFromText } from './services/inboundDeliveryParser/index.js';
 import type { ParsedAccountMessage, ParsedDeliveryAccount } from './services/inboundDeliveryParser/index.js';
-import type { WhatsAppInboundPayload } from './services/whatsappBridge/types.js';
+import type { WhatsAppInboundPayload, WhatsAppOutboxFallbackResult } from './services/whatsappBridge/types.js';
 import { parseDeliveryMessage } from './services/deliveryParser/index.js';
 import type { DeliveryParserItem } from './services/deliveryParser/index.js';
 import { sendAdminOrderNotificationEmail, sendSmtpEmail, verifySmtpConnection } from './services/email/index.js';
@@ -721,7 +721,7 @@ async function notifyAdminPaymentPending(order: any, payout: any) {
   const message = buildAdminPaymentPendingMessage(order, payout);
 
   if (adminNumber && bridgeStatus.enabled) {
-    await queueWhatsAppNotification(prisma, {
+    const outbox = await queueWhatsAppNotification(prisma, {
       recipient: adminNumber,
       message,
       orderId: order.id,
@@ -732,13 +732,32 @@ async function notifyAdminPaymentPending(order: any, payout: any) {
     await addMovement('admin.payment_notification_whatsapp_pending', `WhatsApp pendiente para orden ${order.order_number}; estado bridge: ${bridgeStatus.connection}.`, order.user_id, order.id);
     if (bridgeStatus.connection !== 'connected') {
       await addMovement('admin.payment_notification_email_fallback_requested', `WhatsApp Bridge no esta conectado para orden ${order.order_number}; se envia respaldo por correo.`, order.user_id, order.id);
-      await notifyAdminPaymentByEmail(order, payout, 'email_bridge_not_connected_fallback');
+      const emailResult = await notifyAdminPaymentByEmail(order, payout, 'email_bridge_not_connected_fallback');
+      if (emailResult !== 'email_failed') {
+        await prisma.whatsAppOutbox.update({
+          where: { id: outbox.id },
+          data: {
+            status: 'email_fallback',
+            last_error: 'WhatsApp no estaba conectado; respaldo enviado por correo.'
+          }
+        });
+      }
       return 'whatsapp_pending_email_fallback';
     }
     if (normalizeWhatsAppPhoneForCompare(adminNumber) === normalizeWhatsAppPhoneForCompare(bridgeStatus.connectedNumber)) {
       await addMovement('admin.payment_notification_self_chat', `Orden ${order.order_number}: el destino WhatsApp es el mismo numero vinculado; WhatsApp puede no mostrar notificacion push.`, order.user_id, order.id);
-      if ((await getAdminNotificationEmail()) && process.env.SMTP_HOST && process.env.SMTP_FROM) {
-        await notifyAdminPaymentByEmail(order, payout, 'email_self_chat_fallback');
+      const smtpConfig = await getSmtpConfig();
+      if ((await getAdminNotificationEmail()) && smtpConfig.host && smtpConfig.from && smtpConfig.passwordConfigured) {
+        const emailResult = await notifyAdminPaymentByEmail(order, payout, 'email_self_chat_fallback');
+        if (emailResult !== 'email_failed') {
+          await prisma.whatsAppOutbox.update({
+            where: { id: outbox.id },
+            data: {
+              status: 'email_fallback',
+              last_error: 'El destino era el mismo numero vinculado; respaldo enviado por correo.'
+            }
+          });
+        }
       }
     }
     return 'whatsapp_pending';
@@ -761,17 +780,21 @@ async function notifyAdminPaymentByEmail(order: any, payout: any, channel = 'ema
   }
 }
 
-async function handleWhatsAppOutboxFinalFailure(item: { order_id: string | null; payout_id: string | null }) {
-  if (!item.order_id || !item.payout_id) return;
+async function handleWhatsAppOutboxFinalFailure(
+  item: { order_id: string | null; payout_id: string | null }
+): Promise<WhatsAppOutboxFallbackResult> {
+  if (!item.order_id || !item.payout_id) return 'skipped';
   const order = await prisma.order.findUnique({
     where: { id: item.order_id },
     include: { user: true, provider: true, items: { include: { product: true } }, providerPayouts: true }
   });
   const payout = await prisma.providerPayout.findUnique({ where: { id: item.payout_id } });
-  if (!order || !payout) return;
-  if (order.admin_notification_channel === 'email' || order.admin_notification_channel === 'whatsapp') return;
+  if (!order || !payout) return 'skipped';
+  if (order.admin_notification_channel === 'email') return 'email';
+  if (order.admin_notification_channel === 'whatsapp') return 'whatsapp';
   await addMovement('admin.payment_notification_failed', `WhatsApp fallo definitivamente para orden ${order.order_number}; se intenta correo.`, undefined, order.id);
-  await notifyAdminPaymentByEmail(order, payout, 'email_after_whatsapp_failed');
+  const result = await notifyAdminPaymentByEmail(order, payout, 'email_after_whatsapp_failed');
+  return result === 'email_failed' ? 'failed' : 'email';
 }
 
 const codeLoginSchema = z.object({ access_code: z.string().regex(/^\d{4}$/, 'El codigo debe tener 4 digitos.') });

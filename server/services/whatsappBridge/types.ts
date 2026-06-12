@@ -10,6 +10,7 @@ export type WhatsAppBridgeStatus = {
   pending: number;
   sent: number;
   failed: number;
+  emailFallback: number;
 };
 
 export type QueueWhatsAppMessageInput = {
@@ -21,13 +22,15 @@ export type QueueWhatsAppMessageInput = {
 
 export type AddMovement = (type: string, description: string, user_id?: string, order_id?: string) => Promise<void>;
 
+export type WhatsAppOutboxFallbackResult = 'email' | 'whatsapp' | 'failed' | 'skipped';
+
 export type WhatsAppOutboxFailureHandler = (item: {
   id: string;
   recipient: string;
   message: string;
   order_id: string | null;
   payout_id: string | null;
-}) => Promise<void>;
+}) => Promise<WhatsAppOutboxFallbackResult>;
 
 export type WhatsAppInboundPayload = {
   whatsappMessageId?: string;

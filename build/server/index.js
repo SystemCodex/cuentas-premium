@@ -572,9 +572,18 @@ async function processInboundDeliveryMessage(payload) {
         await addMovement('delivery.inbound_failed', `No se pudo procesar mensaje entrante: ${error instanceof Error ? error.message.slice(0, 120) : 'error desconocido'}.`);
     }
 }
-function buildAdminPaymentPendingMessage(order, payout) {
+function providerUnitCostForItem(item) {
+    return item.product?.provider_cost > 0
+        ? item.product.provider_cost
+        : Math.round(item.unit_price * 0.55);
+}
+function buildAdminPaymentPendingMessages(order, payout) {
+    const requestedAccounts = order.items.map((item) => {
+        const unitCost = providerUnitCostForItem(item);
+        return `- ${item.quantity}x ${item.product_name} | ${money(unitCost)} c/u | Subtotal: ${money(unitCost * item.quantity)}`;
+    });
     const lines = [
-        'NUEVO PEDIDO PENDIENTE',
+        'NUEVO PEDIDO - INFORMACION ADMINISTRATIVA',
         '',
         `Orden: ${order.order_number}`,
         `Cliente: ${order.user.name}`,
@@ -595,7 +604,23 @@ function buildAdminPaymentPendingMessage(order, payout) {
         '3. Pega el mensaje del proveedor.',
         '4. Aprueba la entrega.'
     ];
-    return lines.join('\n');
+    const providerForwardLines = [
+        'PEDIDO DE CUENTAS',
+        '',
+        `Orden: ${order.order_number}`,
+        `Fecha de solicitud: ${formatDateTimeCO(order.created_at)}`,
+        '',
+        'Cuentas solicitadas:',
+        ...requestedAccounts,
+        '',
+        `TOTAL A PAGAR: ${money(order.provider_total)}`,
+        '',
+        'Por favor prepara estas cuentas y envia los datos de acceso indicando el numero de orden.'
+    ];
+    return {
+        adminSummary: lines.join('\n'),
+        providerForward: providerForwardLines.join('\n')
+    };
 }
 async function getSettingMap() {
     const settings = await prisma.appSetting.findMany({
@@ -682,17 +707,22 @@ async function getAnyProviderPaymentConfig(providerId) {
 async function notifyAdminPaymentPending(order, payout) {
     const adminNumber = await getAdminNotificationPhone();
     const bridgeStatus = await getWhatsAppBridgeStatus(prisma);
-    const message = buildAdminPaymentPendingMessage(order, payout);
+    const messages = buildAdminPaymentPendingMessages(order, payout);
     if (adminNumber && bridgeStatus.enabled) {
         const outbox = await queueWhatsAppNotification(prisma, {
             recipient: adminNumber,
-            message,
+            message: messages.adminSummary,
             orderId: order.id,
             payoutId: payout.id
         });
+        await queueWhatsAppNotification(prisma, {
+            recipient: adminNumber,
+            message: messages.providerForward,
+            orderId: order.id
+        });
         await prisma.order.update({ where: { id: order.id }, data: { admin_notification_channel: 'pending' } });
-        await addMovement('whatsapp.outbox_created', `Aviso administrativo de orden ${order.order_number} agregado a WhatsApp Bridge.`, order.user_id, order.id);
-        await addMovement('admin.payment_notification_whatsapp_pending', `WhatsApp pendiente para orden ${order.order_number}; estado bridge: ${bridgeStatus.connection}.`, order.user_id, order.id);
+        await addMovement('whatsapp.outbox_created', `Dos mensajes de la orden ${order.order_number} agregados a WhatsApp Bridge: resumen admin y texto para reenviar al proveedor.`, order.user_id, order.id);
+        await addMovement('admin.payment_notification_whatsapp_pending', `Dos mensajes WhatsApp pendientes para orden ${order.order_number}; estado bridge: ${bridgeStatus.connection}.`, order.user_id, order.id);
         if (bridgeStatus.connection !== 'connected') {
             await addMovement('admin.payment_notification_email_fallback_requested', `WhatsApp Bridge no esta conectado para orden ${order.order_number}; se envia respaldo por correo.`, order.user_id, order.id);
             const emailResult = await notifyAdminPaymentByEmail(order, payout, 'email_bridge_not_connected_fallback');

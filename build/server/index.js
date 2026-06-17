@@ -27,6 +27,9 @@ function configureRuntimeDatabaseUrl() {
         if (databaseUrl.hostname.endsWith('.neon.tech') && !databaseUrl.searchParams.has('sslmode')) {
             databaseUrl.searchParams.set('sslmode', 'require');
         }
+        if (databaseUrl.hostname.endsWith('.neon.tech') && !databaseUrl.searchParams.has('channel_binding')) {
+            databaseUrl.searchParams.set('channel_binding', 'require');
+        }
         if (!databaseUrl.searchParams.has('connect_timeout')) {
             databaseUrl.searchParams.set('connect_timeout', process.env.DATABASE_CONNECT_TIMEOUT_SECONDS || '8');
         }
@@ -180,6 +183,13 @@ function databaseErrorReason(error) {
                         code.startsWith('P10') ? 'connection_error' :
                             'unknown';
     return { code, reason, rawMessage };
+}
+function sanitizeDatabaseErrorMessage(message) {
+    return message
+        .replace(/postgresql:\/\/[^@\s]+@/gi, 'postgresql://[redacted]@')
+        .replace(/password=[^\s&]+/gi, 'password=[redacted]')
+        .replace(/user=[^\s&]+/gi, 'user=[redacted]')
+        .slice(0, 500);
 }
 function requireAuth(req, res, next) {
     const header = req.headers.authorization;
@@ -844,14 +854,15 @@ app.get('/api/health', async (_req, res) => {
     }
     catch (error) {
         console.error('[health:database]', error instanceof Error ? error.message : error);
-        const { code: errorCode, reason: errorReason } = databaseErrorReason(error);
+        const { code: errorCode, reason: errorReason, rawMessage } = databaseErrorReason(error);
         res.status(503).json({
             ok: false,
             database: 'unavailable',
             databaseMode: databaseHost.includes('-pooler.') ? 'pooled' : 'direct',
             databaseHost,
             errorCode,
-            errorReason
+            errorReason,
+            errorMessage: sanitizeDatabaseErrorMessage(rawMessage)
         });
     }
 });

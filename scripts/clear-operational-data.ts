@@ -1,7 +1,7 @@
 import 'dotenv/config';
-import { PrismaClient } from '@prisma/client';
+import { createPrismaClient } from '../server/services/database/prismaClient.js';
 
-const prisma = new PrismaClient();
+const prisma = createPrismaClient();
 const confirmed = process.argv.includes('--yes') || process.env.CLEAR_OPERATIONAL_DATA_CONFIRM === 'YES';
 
 if (!confirmed) {

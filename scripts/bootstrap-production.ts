@@ -1,9 +1,9 @@
 import 'dotenv/config';
 import crypto from 'node:crypto';
 import bcrypt from 'bcryptjs';
-import { PrismaClient } from '@prisma/client';
+import { createPrismaClient } from '../server/services/database/prismaClient.js';
 
-const prisma = new PrismaClient();
+const prisma = createPrismaClient();
 
 type Role = 'client' | 'provider' | 'admin';
 

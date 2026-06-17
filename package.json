@@ -29,6 +29,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@prisma/adapter-pg": "^6.19.0",
     "@prisma/client": "^6.19.0",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.5",
@@ -48,6 +49,7 @@
     "helmet": "^8.2.0",
     "jsonwebtoken": "^9.0.2",
     "nodemailer": "^8.0.10",
+    "pg": "^8.21.0",
     "pino": "^9.14.0",
     "prisma": "^6.19.0",
     "qrcode": "^1.5.4",
@@ -59,6 +61,7 @@
     "zod": "^4.1.12"
   },
   "devDependencies": {
+    "@types/pg": "^8.20.0",
     "concurrently": "^9.2.1"
   },
   "prisma": {

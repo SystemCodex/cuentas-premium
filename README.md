@@ -178,6 +178,8 @@ Funcionamiento:
 - La sesion y las claves de cifrado de WhatsApp se guardan cifradas en PostgreSQL usando `APP_ENCRYPTION_KEY`.
 - Al crear un pedido, el backend crea un `WhatsAppOutbox` para avisar al admin.
 - El worker envia el mensaje automaticamente si la sesion esta conectada.
+- El bridge intenta reconectarse mientras el proceso Node.js siga vivo. La vinculacion suele mantenerse 24/7, pero WhatsApp puede cerrar la sesion, el servidor puede reiniciarse o la red puede fallar.
+- Si el bridge deja de estar conectado durante mas de `WHATSAPP_DISCONNECT_ALERT_GRACE_SECONDS`, el sistema envia una alerta al correo del admin y deja un WhatsApp en cola para el numero de avisos del admin.
 - Si WhatsApp falla, el pedido no falla; queda en el panel admin.
 
 El bridge no debe enviar credenciales al cliente. Las credenciales solo se ven dentro del panel privado del cliente y, si hace falta, en la revision admin de borradores.
@@ -326,6 +328,7 @@ WHATSAPP_BRIDGE_ENABLED="true"
 WHATSAPP_BRIDGE_AUTOSTART="true"
 WHATSAPP_BRIDGE_MODE="baileys"
 WHATSAPP_RECONNECT_DELAY_SECONDS="10"
+WHATSAPP_DISCONNECT_ALERT_GRACE_SECONDS="45"
 WHATSAPP_BAILEYS_LOG_LEVEL="silent"
 WHATSAPP_INBOUND_ENABLED="false"
 WHATSAPP_ALLOWED_INBOUND_NUMBERS=""

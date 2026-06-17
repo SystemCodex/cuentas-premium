@@ -73,7 +73,7 @@ const products = [
   {
     name: 'HBO Max 1 Pantalla x30 Dias',
     category: 'HBO Max',
-    price: 8500,
+    price: 4000,
     brand_key: 'hbo',
     duration: '30 dias',
     screens: '1 pantalla',
@@ -84,7 +84,7 @@ const products = [
   {
     name: 'HBO Max Cuenta Completa 4 Pantallas',
     category: 'HBO Max',
-    price: 17500,
+    price: 14000,
     brand_key: 'hbo',
     duration: '30 dias',
     screens: 'Hasta 4 pantallas',
@@ -95,7 +95,7 @@ const products = [
   {
     name: 'Amazon Prime 1 Pantalla x30 Dias',
     category: 'Amazon Prime',
-    price: 8500,
+    price: 5000,
     brand_key: 'amazon',
     duration: '30 dias',
     screens: '1 pantalla',
@@ -106,7 +106,7 @@ const products = [
   {
     name: 'Amazon Prime Cuenta Completa 4 Pantallas',
     category: 'Amazon Prime',
-    price: 25500,
+    price: 16000,
     brand_key: 'amazon',
     duration: '30 dias',
     screens: 'Hasta 4 pantallas',
@@ -117,7 +117,7 @@ const products = [
   {
     name: 'Crunchyroll 1 Pantalla x30 Dias',
     category: 'Crunchyroll',
-    price: 8000,
+    price: 4500,
     brand_key: 'crunchyroll',
     duration: '30 dias',
     screens: '1 pantalla',
@@ -128,7 +128,7 @@ const products = [
   {
     name: 'Crunchyroll Cuenta Completa 4 Pantallas',
     category: 'Crunchyroll',
-    price: 17000,
+    price: 14000,
     brand_key: 'crunchyroll',
     duration: '30 dias',
     screens: 'Hasta 4 pantallas',
@@ -292,7 +292,7 @@ const products = [
   }
 ];
 
-const providerCostOverrides: Record<string, number> = {
+const salePriceOverrides: Record<string, number> = {
   'Crunchyroll 1 Pantalla x30 Dias': 4500,
   'Crunchyroll Cuenta Completa 4 Pantallas': 14000,
   'Amazon Prime 1 Pantalla x30 Dias': 5000,
@@ -301,19 +301,39 @@ const providerCostOverrides: Record<string, number> = {
   'HBO Max Cuenta Completa 4 Pantallas': 14000
 };
 
+const providerCostRepairs: Record<string, { mistakenValue: number; previousValue: number }> = {
+  'Crunchyroll 1 Pantalla x30 Dias': { mistakenValue: 4500, previousValue: 4400 },
+  'Crunchyroll Cuenta Completa 4 Pantallas': { mistakenValue: 14000, previousValue: 9350 },
+  'Amazon Prime 1 Pantalla x30 Dias': { mistakenValue: 5000, previousValue: 4675 },
+  'Amazon Prime Cuenta Completa 4 Pantallas': { mistakenValue: 16000, previousValue: 14025 },
+  'HBO Max 1 Pantalla x30 Dias': { mistakenValue: 4000, previousValue: 4675 },
+  'HBO Max Cuenta Completa 4 Pantallas': { mistakenValue: 14000, previousValue: 9625 }
+};
+
 async function main() {
   const productCount = await prisma.product.count();
   if (productCount === 0) {
     await prisma.product.createMany({
-      data: products.map((product) => ({ ...product, provider_cost: Math.round(product.price * 0.55), active: true })),
+      data: products.map((product) => ({
+        ...product,
+        provider_cost: providerCostRepairs[product.name]?.previousValue ?? Math.round(product.price * 0.55),
+        active: true
+      })),
       skipDuplicates: true
     });
   }
 
-  for (const [name, provider_cost] of Object.entries(providerCostOverrides)) {
+  for (const [name, repair] of Object.entries(providerCostRepairs)) {
+    await prisma.product.updateMany({
+      where: { name, provider_cost: repair.mistakenValue },
+      data: { provider_cost: repair.previousValue }
+    });
+  }
+
+  for (const [name, price] of Object.entries(salePriceOverrides)) {
     await prisma.product.updateMany({
       where: { name },
-      data: { provider_cost }
+      data: { price }
     });
   }
 

@@ -1000,7 +1000,7 @@ app.post('/api/admin/products', requireAuth, requireRole('admin'), async (req, r
     try {
         const input = productSchema.parse(req.body);
         const product = await prisma.product.create({ data: input });
-        await addMovement('product.created', `Producto creado: ${product.name}`, req.user.id);
+        await addMovement('product.created', `Producto creado: ${product.name}. Venta ${money(product.price)}, proveedor ${money(product.provider_cost)}, utilidad ${money(product.price - product.provider_cost)}.`, req.user.id);
         res.status(201).json({ product });
     }
     catch (error) {
@@ -1017,7 +1017,13 @@ app.patch('/api/admin/products/:id', requireAuth, requireRole('admin'), async (r
                 ? 'product.enabled'
                 : 'product.disabled'
             : 'product.updated';
-        await addMovement(type, `Producto actualizado: ${product.name}`, req.user.id);
+        const changes = [
+            previous.price !== product.price ? `venta ${money(previous.price)} -> ${money(product.price)}` : null,
+            previous.provider_cost !== product.provider_cost ? `proveedor ${money(previous.provider_cost)} -> ${money(product.provider_cost)}` : null,
+            previous.active !== product.active ? `estado ${previous.active ? 'activo' : 'inactivo'} -> ${product.active ? 'activo' : 'inactivo'}` : null,
+            previous.name !== product.name ? `nombre ${previous.name} -> ${product.name}` : null
+        ].filter(Boolean);
+        await addMovement(type, `Producto actualizado: ${product.name}${changes.length ? `. Cambios: ${changes.join(', ')}.` : '. Sin cambios de precio o estado.'}`, req.user.id);
         res.json({ product });
     }
     catch (error) {

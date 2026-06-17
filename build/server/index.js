@@ -23,8 +23,17 @@ function configureRuntimeDatabaseUrl() {
         const [endpoint, ...domainParts] = databaseUrl.hostname.split('.');
         if (databaseUrl.hostname.endsWith('.neon.tech') && endpoint && !endpoint.endsWith('-pooler')) {
             databaseUrl.hostname = [`${endpoint}-pooler`, ...domainParts].join('.');
-            process.env.DATABASE_URL = databaseUrl.toString();
         }
+        if (databaseUrl.hostname.endsWith('.neon.tech') && !databaseUrl.searchParams.has('sslmode')) {
+            databaseUrl.searchParams.set('sslmode', 'require');
+        }
+        if (!databaseUrl.searchParams.has('connect_timeout')) {
+            databaseUrl.searchParams.set('connect_timeout', process.env.DATABASE_CONNECT_TIMEOUT_SECONDS || '8');
+        }
+        if (!databaseUrl.searchParams.has('pool_timeout')) {
+            databaseUrl.searchParams.set('pool_timeout', process.env.DATABASE_POOL_TIMEOUT_SECONDS || '8');
+        }
+        process.env.DATABASE_URL = databaseUrl.toString();
     }
     catch {
         // Prisma will report a sanitized connection error through the health check.
@@ -145,6 +154,32 @@ const formatDateTimeCO = (value) => new Intl.DateTimeFormat('es-CO', {
 }).format(new Date(value));
 function signToken(user) {
     return jwt.sign(user, jwtSecret, { expiresIn: '7d' });
+}
+function databaseRequestTimeoutMs() {
+    return Number(process.env.DATABASE_REQUEST_TIMEOUT_SECONDS || 10) * 1000;
+}
+function withDatabaseTimeout(operation, label) {
+    let timeoutId;
+    const timeout = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error(`${label} agoto el tiempo de espera de la base de datos.`)), databaseRequestTimeoutMs());
+    });
+    return Promise.race([operation, timeout]).finally(() => {
+        if (timeoutId)
+            clearTimeout(timeoutId);
+    });
+}
+function databaseErrorReason(error) {
+    const rawMessage = error instanceof Error ? error.message : String(error);
+    const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : 'UNKNOWN';
+    const lower = rawMessage.toLowerCase();
+    const reason = rawMessage.includes("Can't reach database server") ? 'unreachable' :
+        rawMessage.includes('Authentication failed') ? 'authentication_failed' :
+            rawMessage.includes('invalid') && rawMessage.includes('DATABASE_URL') ? 'invalid_url' :
+                lower.includes('timeout') || lower.includes('tiempo de espera') ? 'timeout' :
+                    lower.includes('tls') || lower.includes('ssl') ? 'tls_error' :
+                        code.startsWith('P10') ? 'connection_error' :
+                            'unknown';
+    return { code, reason, rawMessage };
 }
 function requireAuth(req, res, next) {
     const header = req.headers.authorization;
@@ -800,7 +835,7 @@ app.get('/api/health', async (_req, res) => {
         }
     })();
     try {
-        await prisma.$queryRaw `SELECT 1`;
+        await withDatabaseTimeout(prisma.$queryRaw `SELECT 1`, 'health');
         res.json({
             ok: true,
             database: 'connected',
@@ -809,13 +844,7 @@ app.get('/api/health', async (_req, res) => {
     }
     catch (error) {
         console.error('[health:database]', error instanceof Error ? error.message : error);
-        const errorCode = typeof error === 'object' && error && 'code' in error ? String(error.code) : 'UNKNOWN';
-        const rawMessage = error instanceof Error ? error.message : String(error);
-        const errorReason = rawMessage.includes("Can't reach database server") ? 'unreachable' :
-            rawMessage.includes('Authentication failed') ? 'authentication_failed' :
-                rawMessage.includes('invalid') && rawMessage.includes('DATABASE_URL') ? 'invalid_url' :
-                    rawMessage.toLowerCase().includes('tls') || rawMessage.toLowerCase().includes('ssl') ? 'tls_error' :
-                        'unknown';
+        const { code: errorCode, reason: errorReason } = databaseErrorReason(error);
         res.status(503).json({
             ok: false,
             database: 'unavailable',
@@ -842,7 +871,7 @@ app.post('/api/auth/login', async (req, res, next) => {
                 message: `Demasiados intentos fallidos. Intenta nuevamente en ${Math.ceil(retrySeconds / 60)} minuto(s).`
             });
         }
-        const user = await prisma.user.findUnique({ where: { access_code: input.access_code } });
+        const user = await withDatabaseTimeout(prisma.user.findUnique({ where: { access_code: input.access_code } }), 'login');
         if (!user) {
             recordFailedLogin(attemptKey);
             return res.status(401).json({ message: 'Codigo incorrecto.' });
@@ -857,6 +886,14 @@ app.post('/api/auth/login', async (req, res, next) => {
     }
     catch (error) {
         console.error('[auth:login]', error instanceof Error ? error.message : error);
+        const { code, reason } = databaseErrorReason(error);
+        if (code.startsWith('P10') || reason !== 'unknown') {
+            return res.status(503).json({
+                message: 'La base de datos no esta disponible temporalmente. Intenta de nuevo en unos minutos.',
+                database: 'unavailable',
+                reason
+            });
+        }
         next(error);
     }
 });

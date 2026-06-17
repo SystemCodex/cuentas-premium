@@ -23,6 +23,8 @@ export type Product = {
   screens?: string | null;
   content_type?: string | null;
   benefits?: string[];
+  created_at?: string;
+  updated_at?: string;
 };
 
 export type CartItem = {

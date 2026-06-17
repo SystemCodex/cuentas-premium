@@ -119,6 +119,7 @@ function App() {
   const [addedDetailOpen, setAddedDetailOpen] = useState(false);
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+  const [savingProductId, setSavingProductId] = useState<string | null>(null);
 
   const cartTotal = useMemo(() => cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0), [cart]);
   const cartCount = useMemo(() => cart.reduce((sum, item) => sum + item.quantity, 0), [cart]);
@@ -182,6 +183,15 @@ function App() {
   async function loadProducts() {
     const data = await request<{ products: Product[] }>(user?.role === "admin" ? "/api/admin/products" : "/api/products");
     setProducts(data.products);
+    if (user?.role === "client") {
+      const latestById = new Map(data.products.map((product) => [product.id, product]));
+      setCart((current) => current.flatMap((item) => {
+        const latest = latestById.get(item.product.id);
+        return latest ? [{ ...item, product: latest }] : [];
+      }));
+      setSelectedAddedProduct((current) => current ? latestById.get(current.id) || null : null);
+    }
+    return data.products;
   }
 
   async function loadMe(activeToken = token) {
@@ -283,7 +293,7 @@ function App() {
   }
 
   async function refreshClientData() {
-    await Promise.all([loadOrders(), loadNotifications(), loadUnreadNotifications()]);
+    await Promise.all([loadProducts(), loadOrders(), loadNotifications(), loadUnreadNotifications()]);
   }
 
   async function refreshProviderData(options: { skipOrders?: boolean } = {}) {
@@ -434,24 +444,43 @@ function App() {
 
   async function saveProduct(event: FormEvent<HTMLFormElement>, product?: Product) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const payload = {
-      name: form.get("name"),
-      description: form.get("description"),
-      category: form.get("category"),
-      price: Number(form.get("price")),
-      provider_cost: Number(form.get("provider_cost") || 0),
-      active: form.get("active") === "on",
-      brand_key: form.get("brand_key"),
-      duration: form.get("duration"),
-      screens: form.get("screens"),
-      content_type: form.get("content_type"),
-      benefits: String(form.get("benefits") || "").split("\n").map((item) => item.trim()).filter(Boolean)
-    };
-    const path = product ? `/api/admin/products/${product.id}` : "/api/admin/products";
-    await request(path, { method: product ? "PATCH" : "POST", body: JSON.stringify(payload) });
-    event.currentTarget.reset();
-    await refreshAdminData();
+    const formElement = event.currentTarget;
+    const savingKey = product?.id || "new";
+    setSavingProductId(savingKey);
+    try {
+      const form = new FormData(formElement);
+      const payload = {
+        name: form.get("name"),
+        description: form.get("description"),
+        category: form.get("category"),
+        price: Number(form.get("price")),
+        provider_cost: Number(form.get("provider_cost") || 0),
+        active: form.get("active") === "on",
+        brand_key: form.get("brand_key"),
+        duration: form.get("duration"),
+        screens: form.get("screens"),
+        content_type: form.get("content_type"),
+        benefits: String(form.get("benefits") || "").split("\n").map((item) => item.trim()).filter(Boolean)
+      };
+      const path = product ? `/api/admin/products/${product.id}` : "/api/admin/products";
+      const data = await request<{ product: Product }>(path, {
+        method: product ? "PATCH" : "POST",
+        body: JSON.stringify(payload)
+      });
+      setProducts((current) => product
+        ? current.map((item) => item.id === data.product.id ? data.product : item)
+        : [data.product, ...current]);
+      if (!product) formElement.reset();
+      const priceMessage = product && product.price !== data.product.price
+        ? ` Precio de venta: ${money.format(product.price)} → ${money.format(data.product.price)}.`
+        : "";
+      setNotice(`${product ? "Producto actualizado" : "Producto creado"} correctamente.${priceMessage}`);
+      await refreshAdminData();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "No se pudo guardar el producto.");
+    } finally {
+      setSavingProductId(null);
+    }
   }
 
   async function saveProviderConfig(event: FormEvent<HTMLFormElement>) {
@@ -685,7 +714,7 @@ function App() {
       {view === "cart" && user?.role === "client" && <CartPage cart={cart} total={cartTotal} changeQuantity={changeQuantity} removeFromCart={removeFromCart} checkout={checkout} busy={busy} onContinueShopping={() => setView("catalog")} />}
       {view === "client" && user?.role === "client" && <ClientPanel orders={orders} notifications={notifications} unreadNotifications={unreadNotifications} markNotificationRead={markNotificationRead} copy={copy} />}
       {view === "provider" && user?.role === "provider" && <ProviderPanel orders={orders} deliveries={providerDeliveries} deliver={deliver} busy={busy} />}
-      {view === "admin" && user?.role === "admin" && <AdminPanel dashboard={dashboard} users={users} products={products} orders={orders} pendingDeliveryOrders={pendingDeliveryOrders} pendingPayouts={pendingPayouts} providerConfig={providerConfig} whatsappStatus={whatsappStatus} whatsappQr={whatsappQr} emailStatus={emailStatus} adminLogs={adminLogs} saveProduct={saveProduct} saveProviderConfig={saveProviderConfig} saveAdminNotificationConfig={saveAdminNotificationConfig} saveEmailConfig={saveEmailConfig} testAdminEmail={testAdminEmail} connectWhatsApp={connectWhatsApp} retryWhatsAppFailed={retryWhatsAppFailed} disconnectWhatsApp={disconnectWhatsApp} testAdminWhatsApp={testAdminWhatsApp} markReceiptSent={markReceiptSent} previewDeliveryMessage={previewDeliveryMessage} approveParsedDelivery={approveParsedDelivery} saveDeliveryDraft={saveDeliveryDraft} updateStatus={updateStatus} saveOrderEdit={saveOrderEdit} copy={copy} />}
+      {view === "admin" && user?.role === "admin" && <AdminPanel dashboard={dashboard} users={users} products={products} orders={orders} pendingDeliveryOrders={pendingDeliveryOrders} pendingPayouts={pendingPayouts} providerConfig={providerConfig} whatsappStatus={whatsappStatus} whatsappQr={whatsappQr} emailStatus={emailStatus} adminLogs={adminLogs} savingProductId={savingProductId} saveProduct={saveProduct} saveProviderConfig={saveProviderConfig} saveAdminNotificationConfig={saveAdminNotificationConfig} saveEmailConfig={saveEmailConfig} testAdminEmail={testAdminEmail} connectWhatsApp={connectWhatsApp} retryWhatsAppFailed={retryWhatsAppFailed} disconnectWhatsApp={disconnectWhatsApp} testAdminWhatsApp={testAdminWhatsApp} markReceiptSent={markReceiptSent} previewDeliveryMessage={previewDeliveryMessage} approveParsedDelivery={approveParsedDelivery} saveDeliveryDraft={saveDeliveryDraft} updateStatus={updateStatus} saveOrderEdit={saveOrderEdit} copy={copy} />}
 
       <AddedProductModal
         product={selectedAddedProduct}
@@ -1211,7 +1240,7 @@ function OrderWorkCard({ order, deliver, busy }: {
   );
 }
 
-function AdminPanel({ dashboard, users, products, orders, pendingDeliveryOrders, pendingPayouts, providerConfig, whatsappStatus, whatsappQr, emailStatus, adminLogs, saveProduct, saveProviderConfig, saveAdminNotificationConfig, saveEmailConfig, testAdminEmail, connectWhatsApp, retryWhatsAppFailed, disconnectWhatsApp, testAdminWhatsApp, markReceiptSent, previewDeliveryMessage, approveParsedDelivery, saveDeliveryDraft, updateStatus, saveOrderEdit, copy }: {
+function AdminPanel({ dashboard, users, products, orders, pendingDeliveryOrders, pendingPayouts, providerConfig, whatsappStatus, whatsappQr, emailStatus, adminLogs, savingProductId, saveProduct, saveProviderConfig, saveAdminNotificationConfig, saveEmailConfig, testAdminEmail, connectWhatsApp, retryWhatsAppFailed, disconnectWhatsApp, testAdminWhatsApp, markReceiptSent, previewDeliveryMessage, approveParsedDelivery, saveDeliveryDraft, updateStatus, saveOrderEdit, copy }: {
   dashboard: Dashboard | null;
   users: User[];
   products: Product[];
@@ -1223,7 +1252,8 @@ function AdminPanel({ dashboard, users, products, orders, pendingDeliveryOrders,
   whatsappQr: string | null;
   emailStatus: EmailStatus | null;
   adminLogs: SystemLog[];
-  saveProduct: (event: FormEvent<HTMLFormElement>, product?: Product) => void;
+  savingProductId: string | null;
+  saveProduct: (event: FormEvent<HTMLFormElement>, product?: Product) => Promise<void>;
   saveProviderConfig: (event: FormEvent<HTMLFormElement>) => void;
   saveAdminNotificationConfig: (event: FormEvent<HTMLFormElement>) => void;
   saveEmailConfig: (event: FormEvent<HTMLFormElement>) => void;
@@ -1495,11 +1525,13 @@ function AdminPanel({ dashboard, users, products, orders, pendingDeliveryOrders,
               <input name="content_type" placeholder="Tipo de contenido" />
               <textarea name="benefits" placeholder="Beneficios, uno por linea" />
               <label><input name="active" type="checkbox" defaultChecked /> Activo</label>
-              <button className="btn-solid">Crear producto</button>
+              <button className="btn-solid" disabled={savingProductId === "new"}>
+                {savingProductId === "new" ? "Creando..." : "Crear producto"}
+              </button>
             </form>
             <div className="data-list">
               {products.map((product) => (
-                <form key={product.id} className="inline-product" onSubmit={(event) => saveProduct(event, product)}>
+                <form key={`${product.id}-${product.updated_at || "current"}`} className="inline-product" onSubmit={(event) => saveProduct(event, product)}>
                   <strong>{product.name} - Utilidad: {money.format(product.price - (product.provider_cost || 0))}</strong>
                   <input name="name" defaultValue={product.name} />
                   <input name="description" defaultValue={product.description} />
@@ -1512,7 +1544,9 @@ function AdminPanel({ dashboard, users, products, orders, pendingDeliveryOrders,
                   <input name="content_type" defaultValue={product.content_type || ""} />
                   <textarea name="benefits" defaultValue={(product.benefits || []).join("\n")} />
                   <label><input name="active" type="checkbox" defaultChecked={product.active} /> Activo</label>
-                  <button>Guardar</button>
+                  <button className="btn-solid" disabled={savingProductId === product.id}>
+                    {savingProductId === product.id ? "Guardando..." : "Guardar cambios"}
+                  </button>
                 </form>
               ))}
             </div>

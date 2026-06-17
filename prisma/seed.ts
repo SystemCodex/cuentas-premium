@@ -292,12 +292,28 @@ const products = [
   }
 ];
 
+const providerCostOverrides: Record<string, number> = {
+  'Crunchyroll 1 Pantalla x30 Dias': 4500,
+  'Crunchyroll Cuenta Completa 4 Pantallas': 14000,
+  'Amazon Prime 1 Pantalla x30 Dias': 5000,
+  'Amazon Prime Cuenta Completa 4 Pantallas': 16000,
+  'HBO Max 1 Pantalla x30 Dias': 4000,
+  'HBO Max Cuenta Completa 4 Pantallas': 14000
+};
+
 async function main() {
   const productCount = await prisma.product.count();
   if (productCount === 0) {
     await prisma.product.createMany({
       data: products.map((product) => ({ ...product, provider_cost: Math.round(product.price * 0.55), active: true })),
       skipDuplicates: true
+    });
+  }
+
+  for (const [name, provider_cost] of Object.entries(providerCostOverrides)) {
+    await prisma.product.updateMany({
+      where: { name },
+      data: { provider_cost }
     });
   }
 

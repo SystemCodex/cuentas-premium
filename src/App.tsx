@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import type { CartItem, Dashboard, DeliveryDraft, DeliveryParserItem, DeliveryParserPreview, EmailStatus, Notification, Order, OrderItem, OrderStatus, Payment, Product, ProviderConfig, ProviderDelivery, ProviderPayout, Role, SystemLog, User, WhatsAppBridgeStatus, WhatsAppInboundMessage } from "./types";
+import centroDigitalLogo from "./assets/centro-digital-imagotipo.png";
 
 const API_URL = import.meta.env.VITE_API_URL || "";
 const money = new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
@@ -655,8 +656,8 @@ function App() {
       <AmbientBackground />
       {user && <nav className="navbar">
         <button className="brand-logo" onClick={() => setView(user ? getDefaultViewByRole(user.role) : "auth")}>
-          <span className="logo-mark" />
-          CENTRO DIGITAL
+          <img className="brand-logo-image" src={centroDigitalLogo} alt="Centro Digital de Diseño" />
+          <span>CENTRO DIGITAL</span>
         </button>
         <div className="nav-actions">
           {!user && <>
@@ -727,7 +728,8 @@ function AuthLanding({ authSubmit, busy }: {
   return (
     <main className="auth-landing page-shell">
       <section className="auth-copy">
-        <h1>Centro digital de diseño <span>Administrador de cuentas</span></h1>
+        <img className="auth-brand-mark" src={centroDigitalLogo} alt="Imagotipo Centro Digital de Diseño" />
+        <h1>Centro Digital de Diseño <span>Administrador de cuentas</span></h1>
       </section>
       <AuthCard authSubmit={authSubmit} busy={busy} />
     </main>

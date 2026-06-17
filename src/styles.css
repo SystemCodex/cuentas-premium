@@ -127,11 +127,11 @@ button {
   color: var(--text-main);
 }
 
-.logo-mark {
-  width: 20px;
-  height: 20px;
-  background: linear-gradient(135deg, #111, #555);
-  border-radius: 6px;
+.brand-logo-image {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  object-fit: contain;
 }
 
 .nav-actions {
@@ -217,6 +217,12 @@ button {
   align-items: center;
   padding-top: 58px;
   padding-bottom: 58px;
+}
+
+.auth-brand-mark {
+  width: clamp(96px, 11vw, 144px);
+  height: clamp(96px, 11vw, 144px);
+  object-fit: contain;
 }
 
 .auth-copy h1 {
@@ -1711,6 +1717,14 @@ th {
 
   .auth-panel {
     position: static;
+  }
+
+  .auth-copy {
+    text-align: center;
+  }
+
+  .auth-brand-mark {
+    margin-inline: auto;
   }
 
   .catalog-toolbar {

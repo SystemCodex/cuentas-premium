@@ -1,8 +1,8 @@
 import 'dotenv/config';
-import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { createPrismaClient } from '../server/services/database/prismaClient.js';
 
-const prisma = new PrismaClient();
+const prisma = createPrismaClient();
 type Role = 'client' | 'provider' | 'admin';
 
 async function upsertUser(name: string, email: string, role: Role, password: string, access_code: string) {

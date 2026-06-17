@@ -7,46 +7,13 @@ import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import jwt from 'jsonwebtoken';
-import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
+import { createPrismaClient, getRuntimeDatabaseHost } from './services/database/prismaClient.js';
 import { disconnectWhatsAppBridge, enableWhatsAppBridge, getWhatsAppBridgeQr, getWhatsAppBridgeStatus, queueWhatsAppNotification, retryFailedWhatsAppOutbox, startWhatsAppBridgeWorker } from './services/whatsappBridge/index.js';
 import { parseAccountMessage, serviceKeyFromText } from './services/inboundDeliveryParser/index.js';
 import { parseDeliveryMessage } from './services/deliveryParser/index.js';
 import { emailConfigured, sendAdminOrderNotificationEmail, sendSmtpEmail, verifySmtpConnection } from './services/email/index.js';
-function configureRuntimeDatabaseUrl() {
-    const raw = process.env.DATABASE_URL;
-    const usePooler = process.env.DATABASE_USE_POOLER?.trim().toLowerCase() !== 'false';
-    if (!raw || process.env.NODE_ENV !== 'production' || !usePooler)
-        return;
-    try {
-        const databaseUrl = new URL(raw);
-        const [endpoint, ...domainParts] = databaseUrl.hostname.split('.');
-        if (databaseUrl.hostname.endsWith('.neon.tech') && endpoint && !endpoint.endsWith('-pooler')) {
-            databaseUrl.hostname = [`${endpoint}-pooler`, ...domainParts].join('.');
-        }
-        if (databaseUrl.hostname.endsWith('.neon.tech') && !databaseUrl.searchParams.has('sslmode')) {
-            databaseUrl.searchParams.set('sslmode', 'require');
-        }
-        if (databaseUrl.hostname.endsWith('.neon.tech') && !databaseUrl.searchParams.has('channel_binding')) {
-            databaseUrl.searchParams.set('channel_binding', 'require');
-        }
-        if (!databaseUrl.searchParams.has('connect_timeout')) {
-            databaseUrl.searchParams.set('connect_timeout', process.env.DATABASE_CONNECT_TIMEOUT_SECONDS || '8');
-        }
-        if (!databaseUrl.searchParams.has('pool_timeout')) {
-            databaseUrl.searchParams.set('pool_timeout', process.env.DATABASE_POOL_TIMEOUT_SECONDS || '8');
-        }
-        if (!databaseUrl.searchParams.has('connection_limit')) {
-            databaseUrl.searchParams.set('connection_limit', process.env.DATABASE_CONNECTION_LIMIT || '5');
-        }
-        process.env.DATABASE_URL = databaseUrl.toString();
-    }
-    catch {
-        // Prisma will report a sanitized connection error through the health check.
-    }
-}
-configureRuntimeDatabaseUrl();
-const prisma = new PrismaClient();
+const prisma = createPrismaClient();
 const app = express();
 const port = Number(process.env.PORT || 3000);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -922,14 +889,7 @@ async function handleWhatsAppOutboxFinalFailure(item) {
 }
 const codeLoginSchema = z.object({ access_code: z.string().regex(/^\d{4}$/, 'El codigo debe tener 4 digitos.') });
 app.get('/api/health', async (_req, res) => {
-    const databaseHost = (() => {
-        try {
-            return new URL(process.env.DATABASE_URL || '').hostname;
-        }
-        catch {
-            return '';
-        }
-    })();
+    const databaseHost = getRuntimeDatabaseHost();
     try {
         await prisma.$queryRaw `SELECT 1`;
         res.json({

@@ -3,9 +3,9 @@ import readline from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 import crypto from 'node:crypto';
 import bcrypt from 'bcryptjs';
-import { PrismaClient } from '@prisma/client';
+import { createPrismaClient } from '../server/services/database/prismaClient.js';
 
-const prisma = new PrismaClient();
+const prisma = createPrismaClient();
 
 async function askForProvider() {
   if (process.env.PROVIDER_EMAIL && process.env.PROVIDER_NAME && process.env.PROVIDER_CODE) {

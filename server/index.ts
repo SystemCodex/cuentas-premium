@@ -49,6 +49,9 @@ function configureRuntimeDatabaseUrl() {
     if (!databaseUrl.searchParams.has('pool_timeout')) {
       databaseUrl.searchParams.set('pool_timeout', process.env.DATABASE_POOL_TIMEOUT_SECONDS || '8');
     }
+    if (!databaseUrl.searchParams.has('connection_limit')) {
+      databaseUrl.searchParams.set('connection_limit', process.env.DATABASE_CONNECTION_LIMIT || '5');
+    }
     process.env.DATABASE_URL = databaseUrl.toString();
   } catch {
     // Prisma will report a sanitized connection error through the health check.
@@ -195,25 +198,12 @@ function signToken(user: AuthUser) {
   return jwt.sign(user, jwtSecret!, { expiresIn: '7d' });
 }
 
-function databaseRequestTimeoutMs() {
-  return Number(process.env.DATABASE_REQUEST_TIMEOUT_SECONDS || 10) * 1000;
-}
-
-function withDatabaseTimeout<T>(operation: Promise<T>, label: string): Promise<T> {
-  let timeoutId: NodeJS.Timeout | undefined;
-  const timeout = new Promise<never>((_, reject) => {
-    timeoutId = setTimeout(() => reject(new Error(`${label} agoto el tiempo de espera de la base de datos.`)), databaseRequestTimeoutMs());
-  });
-  return Promise.race([operation, timeout]).finally(() => {
-    if (timeoutId) clearTimeout(timeoutId);
-  });
-}
-
 function databaseErrorReason(error: unknown) {
   const rawMessage = error instanceof Error ? error.message : String(error);
   const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : 'UNKNOWN';
   const lower = rawMessage.toLowerCase();
   const reason =
+    lower.includes('panic') || lower.includes('query engine') ? 'engine_panic' :
     rawMessage.includes("Can't reach database server") ? 'unreachable' :
     rawMessage.includes('Authentication failed') ? 'authentication_failed' :
     rawMessage.includes('invalid') && rawMessage.includes('DATABASE_URL') ? 'invalid_url' :
@@ -229,6 +219,7 @@ function sanitizeDatabaseErrorMessage(message: string) {
     .replace(/postgresql:\/\/[^@\s]+@/gi, 'postgresql://[redacted]@')
     .replace(/password=[^\s&]+/gi, 'password=[redacted]')
     .replace(/user=[^\s&]+/gi, 'user=[redacted]')
+    .split('https://github.com/prisma/prisma/issues/new')[0]
     .slice(0, 500);
 }
 
@@ -1033,7 +1024,7 @@ app.get('/api/health', async (_req, res) => {
     }
   })();
   try {
-    await withDatabaseTimeout(prisma.$queryRaw`SELECT 1`, 'health');
+    await prisma.$queryRaw`SELECT 1`;
     res.json({
       ok: true,
       database: 'connected',
@@ -1071,10 +1062,7 @@ app.post('/api/auth/login', async (req, res, next) => {
         message: `Demasiados intentos fallidos. Intenta nuevamente en ${Math.ceil(retrySeconds / 60)} minuto(s).`
       });
     }
-    const user = await withDatabaseTimeout(
-      prisma.user.findUnique({ where: { access_code: input.access_code } }),
-      'login'
-    );
+    const user = await prisma.user.findUnique({ where: { access_code: input.access_code } });
     if (!user) {
       recordFailedLogin(attemptKey);
       return res.status(401).json({ message: 'Codigo incorrecto.' });

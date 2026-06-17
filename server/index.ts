@@ -988,7 +988,8 @@ app.get('/api/health', async (_req, res) => {
     res.json({
       ok: true,
       database: 'connected',
-      databaseMode: databaseHost.includes('-pooler.') ? 'pooled' : 'direct'
+      databaseMode: databaseHost.includes('-pooler.') ? 'pooled' : 'direct',
+      databaseDriver: 'pg-adapter'
     });
   } catch (error) {
     console.error('[health:database]', error instanceof Error ? error.message : error);
@@ -997,6 +998,7 @@ app.get('/api/health', async (_req, res) => {
       ok: false,
       database: 'unavailable',
       databaseMode: databaseHost.includes('-pooler.') ? 'pooled' : 'direct',
+      databaseDriver: 'pg-adapter',
       databaseHost,
       errorCode,
       errorReason,
